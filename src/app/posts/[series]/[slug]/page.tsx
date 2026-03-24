@@ -48,43 +48,14 @@ export default async function PostPage({ params }: Params) {
   const seriesInfo = getSeriesById(post.series)
   const seriesPosts = getPostsBySeries(seriesSlug)
 
-  // 동적 OG 이미지 URL
-  const ogImageUrl = `/api/og?title=${encodeURIComponent(post.title)}&series=${encodeURIComponent(seriesInfo?.name ?? '')}&color=${encodeURIComponent(seriesInfo?.color ?? '#6366f1')}&tags=${encodeURIComponent(post.tags.join(','))}`
-
-  // 실제 썸네일 이미지 우선 사용, 없으면 OG 동적 이미지
-  const heroImageUrl = post.thumbnail ?? ogImageUrl
-
   return (
     <div>
-      {/* 상단 헤더 이미지 */}
-      <div
-        style={{
-          width: '100%',
-          height: 'clamp(220px, 35vw, 380px)',
-          position: 'relative',
-          overflow: 'hidden',
-        }}
-      >
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={heroImageUrl}
-          alt={post.title}
-          style={{
-            width: '100%',
-            height: '100%',
-            objectFit: 'cover',
-            objectPosition: 'center top',
-            display: 'block',
-          }}
-        />
-      </div>
-
       {/* 본문 컨테이너 */}
       <div
         style={{
           maxWidth: '960px',
           margin: '0 auto',
-          padding: '3rem 1.5rem 0',
+          padding: '4rem 1.5rem 0',
         }}
       >
         {/* 시리즈 배지 */}
