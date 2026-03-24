@@ -1,0 +1,137 @@
+{
+  "_comment": "블로그 콘텐츠 분류 체계 — 카테고리보다 시리즈 네비게이션을 우선",
+  "_updated": "2026-03-23",
+
+  "series": [
+    {
+      "id": "ai-agent-automation",
+      "name": "AI 에이전트 자동화",
+      "slug": "ai-agent",
+      "description": "Claude, Gemini 등 LLM 기반 멀티에이전트 시스템으로 콘텐츠를 자동 생성하는 프로젝트 시리즈",
+      "color": "#6366f1",
+      "posts": [
+        "landing-page-generator-overview",
+        "landing-page-generator-agents",
+        "ppt-team-agent-overview"
+      ]
+    },
+    {
+      "id": "shorts-pipeline",
+      "name": "쇼츠 자동화 파이프라인",
+      "slug": "shorts-pipeline",
+      "description": "한국어 키워드 → 도우인 검색 → 영상 수집 → 편집 → 업로드 전 과정을 자동화하는 파이프라인",
+      "color": "#f59e0b",
+      "posts": [
+        "auto-rank-douyin-collection",
+        "auto-rank-playwright-bypass"
+      ]
+    },
+    {
+      "id": "remotion-video",
+      "name": "Remotion 영상 제작",
+      "slug": "remotion",
+      "description": "TypeScript 코드로 영상을 만드는 Remotion 프레임워크 활용기",
+      "color": "#10b981",
+      "posts": [
+        "remotion-intro-setup",
+        "inline-ai-video-production"
+      ]
+    },
+    {
+      "id": "threebot",
+      "name": "쓰리봇 — 빗물받이 관리",
+      "slug": "threebot",
+      "description": "IoT 센서와 지도 기반 웹앱으로 빗물받이 현황을 실시간 모니터링하는 시스템",
+      "color": "#3b82f6",
+      "posts": [
+        "threebot-web-overview",
+        "naver-map-troubleshooting",
+        "threebot-weight-sensor"
+      ]
+    },
+    {
+      "id": "wildfire-cctv",
+      "name": "산불 CCTV 협력 감지",
+      "slug": "wildfire-cctv",
+      "description": "여러 CCTV 스트림이 협력하여 연기/화재를 감지하고 발화 지점을 삼각측량하는 마이크로서비스 시스템",
+      "color": "#ef4444",
+      "posts": [
+        "wildfire-cctv-architecture",
+        "wildfire-cctv-microservices",
+        "wildfire-cctv-fusion-algorithm"
+      ]
+    },
+    {
+      "id": "dp-robot",
+      "name": "DProbot",
+      "slug": "dp-robot",
+      "description": "DProbot 서비스 랜딩페이지 구현",
+      "color": "#8b5cf6",
+      "posts": [
+        "dp-robot-landing-page"
+      ]
+    },
+    {
+      "id": "ai-video",
+      "name": "AI 영상 제작",
+      "slug": "ai-video",
+      "description": "Kling AI, Veo3, 미드저니, Remotion 등 AI 도구를 활용한 영상 제작 프로젝트 모음",
+      "color": "#ec4899",
+      "posts": [
+        "korean-road-56th-anniversary"
+      ]
+    }
+  ],
+
+  "categories": [
+    {
+      "id": "project",
+      "name": "프로젝트",
+      "slug": "project",
+      "description": "완성된 프로젝트 구현기 및 회고"
+    },
+    {
+      "id": "troubleshooting",
+      "name": "트러블슈팅",
+      "slug": "troubleshooting",
+      "description": "개발 중 만난 문제와 해결 과정"
+    },
+    {
+      "id": "retrospective",
+      "name": "회고",
+      "slug": "retrospective",
+      "description": "프로젝트 또는 기간별 회고"
+    },
+    {
+      "id": "experiment",
+      "name": "실험",
+      "slug": "experiment",
+      "description": "새로운 기술, 도구, 아이디어 검증"
+    },
+    {
+      "id": "devlog",
+      "name": "개발일지",
+      "slug": "devlog",
+      "description": "작업 과정의 단계별 기록"
+    }
+  ],
+
+  "tags": {
+    "language": ["Python", "TypeScript", "JavaScript", "HTML", "Jupyter"],
+    "framework": ["Next.js", "React", "Remotion", "Playwright"],
+    "infra": ["Docker", "Microservices", "GitHub Actions"],
+    "ai": ["Claude API", "Gemini API", "LLM", "Multi-Agent", "Automation"],
+    "domain": ["IoT", "Maps", "Video", "PPT", "Landing Page", "CCTV", "Shorts"],
+    "tool": ["yt-dlp", "pptxgenjs", "Leaflet", "Naver Maps", "Recharts"]
+  },
+
+  "thumbnail_rules": {
+    "_comment": "썸네일은 /public/thumbnails/{series-slug}/{post-slug}.png 경로 규칙",
+    "path_pattern": "/thumbnails/{series_slug}/{post_slug}.png",
+    "fallback": "/thumbnails/default.png",
+    "recommended_size": "1200x630",
+    "format": "PNG",
+    "naming_convention": "series-slug / post-slug (모두 kebab-case)",
+    "auto_generate_rule": "썸네일 이미지 없으면 시리즈 color + 포스트 제목으로 텍스트 썸네일 자동 렌더링"
+  }
+}

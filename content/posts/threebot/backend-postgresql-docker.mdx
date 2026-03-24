@@ -1,0 +1,264 @@
+---
+title: "쓰리봇 백엔드 인프라 — PostgreSQL + Docker + FastAPI로 공공 SaaS 구조 만들기"
+slug: "backend-postgresql-docker"
+series: "threebot"
+seriesOrder: 4
+category: "devlog"
+createdAt: "2026-02-05"
+summary: "공공기관 서비스에 필요한 DB 보안 요구사항을 충족하기 위해 NCP + Docker + PostgreSQL 조합을 선택한 이유와, MySQL 마이그레이션부터 FastAPI 연동, BBOX API 설계까지 전 과정 기록"
+tags: ["FastAPI", "PostgreSQL", "Docker", "NCP", "Python"]
+thumbnail: "/thumbnails/threebot/backend-postgresql-docker.png"
+githubUrl: "https://github.com/mnunu123/threebot-website"
+projectStatus: "completed"
+readingTime: 11
+---
+
+## 한 줄 요약
+
+> Docker 위에 PostgreSQL을 올리고, FastAPI를 거쳐서만 DB에 접근하는 구조 — 공공기관 보안 요구사항을 만족하는 최소한의 아키텍처.
+
+---
+
+## 왜 이 스택인가
+
+처음부터 PostgreSQL + Docker를 선택한 게 아니었다. MySQL로 시작해서 공공기관 요구사항을 맞추다 보니 이 구조에 도달했다.
+
+공공 SaaS에서 넘어야 했던 조건들:
+- **데이터 위치**: 해외 서버(무료 클라우드) 사용 시 GS 인증 및 사업 탈락 위험
+- **DB 보안**: 외부에서 직접 DB 접근 불가능해야 함
+- **확장성**: 나중에 Managed DB로 옮길 수 있는 구조
+
+→ **국내 클라우드(NCP) + localhost 바인딩 PostgreSQL + API 전용 접근** 조합으로 정리됐다.
+
+---
+
+## 1. Docker로 PostgreSQL 띄우기
+
+DB 설치/환경 관리를 단순화하고, Dev → Prod 환경을 동일하게 유지하기 위해 Docker를 선택했다.
+
+```bash
+docker run -d \
+  --name postgres-db \
+  -v pgdata:/var/lib/postgresql/data \
+  -p 127.0.0.1:5432:5432 \
+  postgres:15
+```
+
+여기서 `-p 127.0.0.1:5432:5432`가 핵심이다. `0.0.0.0:5432`가 아니라 `127.0.0.1`에만 바인딩해서, 서버 외부에서는 포트 자체에 접근할 수 없다.
+
+볼륨 확인:
+```bash
+docker volume ls
+docker volume inspect pgdata
+```
+
+서버가 재시작해도 `/var/lib/docker/volumes/pgdata/` 경로에 데이터가 유지된다.
+
+---
+
+## 2. MySQL → PostgreSQL 데이터 이관
+
+기존 MySQL 데이터를 CSV로 내보낸 다음 PostgreSQL로 옮겼다.
+
+```bash
+# CSV를 컨테이너 내부로 복사
+docker cp drainage_data.csv postgres-db:/tmp/
+
+# PostgreSQL COPY로 일괄 적재
+docker exec -it postgres-db psql -U postgres -d threebot \
+  -c "\copy drainage_data FROM '/tmp/drainage_data.csv' WITH (FORMAT csv, HEADER true)"
+```
+
+`INSERT` 루프 대신 `\copy`를 쓰면 대용량도 빠르게 들어간다. 1,000건 데이터 정상 이관 완료.
+
+---
+
+## 3. DB 보안 구조 — 3중 차단
+
+공공 서비스에서 DB가 외부에 노출되면 치명적이다. 세 단계로 막았다.
+
+**1단계: NCP ACG(방화벽)에서 5432 포트 차단**
+서버 외부에서 아예 포트에 도달하지 못하게.
+
+**2단계: Docker 포트 localhost 바인딩**
+```bash
+-p 127.0.0.1:5432:5432
+```
+서버에 SSH로 접속해도 `localhost`에서만 접근 가능.
+
+**3단계: API 서버만 DB 접근 허용**
+FastAPI가 `127.0.0.1:5432`로 연결. 외부에서 오는 모든 요청은 API 엔드포인트를 통해서만 처리.
+
+<Callout type="tip">
+이 구조에서는 DB에 직접 붙어서 쿼리를 날리려면 SSH 터널이 필요하다. 운영 중에는 의도적으로 불편하게 만드는 것이 보안에 맞다.
+</Callout>
+
+---
+
+## 4. PostgreSQL 사용자 권한 설계
+
+`postgres` 슈퍼유저로 서비스를 운영하는 건 위험하다. 서비스 전용 계정을 만들고 최소 권한만 부여했다.
+
+```sql
+CREATE USER threebot_app WITH PASSWORD 'StrongPassword123';
+GRANT CONNECT ON DATABASE threebot TO threebot_app;
+GRANT USAGE ON SCHEMA public TO threebot_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON drainage_data TO threebot_app;
+```
+
+`threebot_app`은 `drainage_data` 테이블에만 접근할 수 있다. `DROP`, `TRUNCATE`, 다른 테이블 접근은 불가능.
+
+---
+
+## 5. FastAPI + async SQLAlchemy 연동
+
+![NCP 서버에 PostgreSQL 연동 완료 — 대시보드 확인](/images/threebot/ncloud-integration-1.png)
+
+![NCloud DB 서버 연결 상태 확인 화면](/images/threebot/ncloud-integration-2.png)
+
+```bash
+DATABASE_URL=postgresql+asyncpg://threebot_app:password@127.0.0.1:5432/threebot
+```
+
+`asyncpg` 드라이버로 비동기 연결을 쓰면 FastAPI의 async 엔드포인트와 잘 맞는다. sync SQLAlchemy를 쓰면 `await`이 있어도 실제로는 블로킹이 된다.
+
+기존 프로젝트 구조를 건드리지 않고 DB URL만 바꿔서 연결했다. 연결 성공 후 API를 통해 데이터 제공 가능.
+
+---
+
+## 6. BBOX API — 지도 성능 최적화
+
+![1,000개 더미 빗물받이 데이터 삽입 후 지도에 표시된 결과](/images/threebot/dummy-data-result.png)
+
+빗물받이가 수천 건인데 전체를 한 번에 내리면 지도 렌더링이 느려진다. 현재 지도 뷰포트(`BBOX`)에 있는 데이터만 가져오도록 API를 설계했다.
+
+```sql
+SELECT id, lat, lng
+FROM drainage_data
+WHERE lat BETWEEN :minLat AND :maxLat
+  AND lng BETWEEN :minLng AND :maxLng
+LIMIT 2000;
+```
+
+```
+GET /drainage/markers?minLat=&minLng=&maxLat=&maxLng=
+```
+
+프론트에서 지도가 이동하거나 줌이 바뀔 때마다 현재 뷰포트 좌표를 계산해서 이 API를 호출한다. 화면 밖 데이터는 요청하지 않는다.
+
+결과:
+- 지도 렌더링 속도 개선
+- 서버 트래픽 감소
+- 데이터가 늘어나도 쿼리 범위가 뷰포트로 제한됨 → 확장성 확보
+
+---
+
+## 7. Naver Map 연동 구조
+
+프론트에서 BBOX를 계산해서 API를 호출하고, 응답받은 좌표 배열로 마커를 그린다.
+
+```typescript
+// 지도 idle 이벤트 = 이동/줌 완료
+naver.maps.Event.addListener(map, 'idle', async () => {
+  const bounds = map.getBounds()
+  const sw = bounds.getSW()
+  const ne = bounds.getNE()
+
+  const data = await fetch(
+    `/drainage/markers?minLat=${sw.lat()}&minLng=${sw.lng()}&maxLat=${ne.lat()}&maxLng=${ne.lng()}`
+  ).then(r => r.json())
+
+  data.forEach(({ lat, lng }) => {
+    new naver.maps.Marker({
+      map,
+      position: new naver.maps.LatLng(lat, lng),
+    })
+  })
+})
+```
+
+---
+
+## 8. 개념 정리: Docker vs PostgreSQL vs Volume
+
+처음에 헷갈렸던 부분이라 명확하게 정리해 둔다.
+
+| 개념 | 역할 |
+|------|------|
+| **Docker** | 실행 환경 (컨테이너) — PostgreSQL이 돌아가는 공간 |
+| **PostgreSQL** | 데이터베이스 — 실제 데이터를 저장하고 쿼리를 처리 |
+| **Volume (`pgdata`)** | 데이터 저장소 — 컨테이너가 삭제돼도 데이터는 여기에 남음 |
+
+Docker를 지우면 PostgreSQL도 사라지지만, Volume은 별도라서 데이터는 남는다. `docker run`할 때 같은 볼륨을 마운트하면 데이터가 복원된다.
+
+---
+
+## 9. 만났던 에러들
+
+### curl 8000 연결 실패
+```
+curl: (7) Failed to connect to localhost port 8000
+```
+→ FastAPI 서버가 실행 중이 아니었다. `uvicorn main:app --reload`로 서버부터 띄워야 한다.
+
+### Internal Server Error (500)
+→ 두 가지 원인 중 하나: DB 연결 실패 또는 ORM 쿼리 오류. 먼저 `docker ps`로 컨테이너 상태 확인, 그 다음 FastAPI 로그 확인.
+
+### psql 명령어 오류
+```
+\copy: command not found
+```
+→ bash 쉘에서 `\copy`를 입력하면 안 된다. `docker exec -it postgres-db psql ...` 로 PostgreSQL 콘솔에 들어간 상태에서 실행해야 한다.
+
+### 외부 IP 접속 오류
+→ 브라우저에서 `http://서버IP:8000`으로 직접 접속 시도. API 서버는 HTTPS + 도메인으로만 열어야 한다. 개발 중 테스트는 `curl localhost:8000`으로.
+
+---
+
+## 최종 아키텍처
+
+![공간 인덱스 적용 후 400만 건 데이터에서도 렉 없이 마커가 표시되는 결과](/images/threebot/spatial-index-result.png)
+
+```
+[ 사용자 브라우저 ]
+        ↓ HTTPS
+[ Naver Map (Next.js Frontend) ]
+        ↓ /drainage/markers?bbox=...
+[ FastAPI (API Server) ]
+        ↓ asyncpg
+[ PostgreSQL (Docker, 127.0.0.1:5432) ]
+        ↓ Volume
+[ pgdata (영속 스토리지) ]
+```
+
+외부에서 DB에 직접 접근하는 경로가 없다. 모든 데이터 접근은 FastAPI를 거친다.
+
+---
+
+## 로봇 제어 아키텍처 — 백엔드와의 연결
+
+![쓰리봇 전체 시스템 — 로봇 + 웹 통합 구조](/images/threebot-web/portfolio-p129.png)
+
+웹 백엔드만 있는 게 아니다. 물리적 로봇(STM32 + ROS2)과 웹 서버가 어떻게 연결되는지:
+
+```
+[쓰리봇 로봇 하드웨어]
+  STM32 모터 제어 + ALM 센서
+  조이스틱 텔레오퍼레이션 입력
+       ↓ ROS2
+[임베디드 컨트롤러]
+  비상정지 로직 / 호밍 시퀀스
+       ↓ HTTP
+[FastAPI (이 포스트에서 다룬 서버)]
+  빗물받이 상태 수신 / 저장
+       ↓ asyncpg
+[PostgreSQL (Docker)]
+       ↓ REST API
+[Next.js 웹앱 (지도 대시보드)]
+```
+
+로봇이 현장에서 수집한 빗물받이 상태 데이터를 FastAPI로 전송하고, 웹 대시보드에서 실시간 확인할 수 있는 구조다.
+
+---
+
+_시리즈: [쓰리봇 — 빗물받이 관리](/series/threebot) · 이전: [웹앱 개발 회고 — 지도 시각화](/posts/threebot/web-map-visualization) →_

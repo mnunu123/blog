@@ -1,0 +1,418 @@
+---
+title: "쓰리봇 STM32 펌웨어 설계 — UART 명령 시스템부터 FSM 제어까지"
+slug: "stm32-firmware-architecture"
+series: "threebot"
+seriesOrder: 1
+category: "devlog"
+createdAt: "2025-12-18"
+summary: "main.c 스파게티에서 Layered Architecture로 — UART 라인 버퍼링, FSM 상태 관리, TIM3 PWM 스텝 제어, ALM 센서 호밍까지 쓰리봇 펌웨어 전체 구조를 9개 주제로 정리한다"
+tags: ["STM32", "Embedded", "C", "FSM", "UART"]
+thumbnail: "/thumbnails/threebot/stm32-firmware-architecture.png"
+githubUrl: "https://github.com/mnunu123/threebot"
+projectStatus: "completed"
+readingTime: 14
+---
+
+## 한 줄 요약
+
+> 단순 모터 제어를 넘어서 — UART 명령 시스템 + FSM 아키텍처 + 정밀 스텝 제어를 결합한 확장형 로봇 제어 플랫폼
+
+---
+
+## 배경
+
+![쓰리봇 시제품 — 빗물받이 청소 로봇 전체 구조](/images/threebot/prototype-full.png)
+
+쓰리봇은 도시 빗물받이를 자동으로 청소하는 로봇이다. 물리적 이동을 담당하는 STM32 펌웨어가 전체 시스템의 기반이다. 처음엔 `main.c`에 모든 것을 때려박은 구조였다. 기능이 하나 추가될 때마다 버그가 두 개씩 생겼다.
+
+9번의 구조 재설계를 거쳐 도달한 결과를 정리한다.
+
+---
+
+## 1. UART 통신 구조 재설계 (Orin ↔ STM32)
+
+### 문제
+
+- UART 수신 시 텍스트 깨짐, 불안정한 수신
+- 바이트 단위 처리로 인한 파싱 오류
+- 상위 시스템(Jetson Orin)과의 명령 인터페이스 부재
+
+### 접근
+
+**1바이트 인터럽트 기반 RX → 라인 단위 버퍼링**
+
+`\n`이 올 때까지 버퍼에 쌓고, 개행 문자가 오면 명령이 완성됐다고 판단한다.
+
+```c
+void app_cmd_on_rx_byte(uint8_t byte)
+{
+    if (byte == '\n') {
+        line_ready = 1;
+    } else {
+        buffer[idx++] = byte;
+    }
+}
+```
+
+**명령 프로토콜 정의**
+
+```
+PING      → PONG          (연결 확인)
+ACT:HOME               (전축 원점 복귀)
+ACT:WINCH IN           (윈치 내리기)
+ACT:WINCH OUT          (윈치 올리기)
+GOTO:X..Y..            (절대 좌표 이동)
+```
+
+![STM32 GPIO 배선 작업 — Orin과 UART 연결 구성](/images/threebot/stm32-wiring-gpio.jpg)
+
+### 결과
+
+- 안정적인 명령 기반 통신 프로토콜 구축
+- Orin ↔ STM32 왕복 통신 완성 (`BOOT OK`, `PING/PONG` 검증)
+- 이후 모든 제어 로직이 명령 기반으로 확장 가능
+
+---
+
+## 2. 펌웨어 아키텍처 분리 (Layered Architecture)
+
+### 문제
+
+- `main.c`에 모든 로직이 몰린 스파게티 코드
+- 기능 추가 시 사이드 이펙트 발생
+- 테스트 및 확장 불가능
+
+### 접근
+
+| Layer | 역할 |
+|-------|------|
+| `app` | 상태 관리 (FSM, 명령 처리) |
+| `service` | 기능 단위 로직 (모터, 윈치 등) |
+| `driver` | 하드웨어 직접 제어 |
+| `bsp` | 핀 / 보드 설정 |
+
+호출 방향은 단방향:
+
+```
+app_cmd → app_fsm → svc_stepper → drv_tim3_pwm
+```
+
+![펌웨어 아키텍처 구조 — STM32CubeIDE 프로젝트 레이어 분석](/images/threebot/firmware-architecture.png)
+
+`main` 루프는 최소화:
+
+```c
+while(1)
+{
+    app_cmd_process();
+    app_fsm_update();  // 1ms tick 기반
+}
+```
+
+### 결과
+
+- 확장 가능한 구조 확보
+- 기능 추가 시 영향 범위 최소화
+- host test 구조까지 고려된 설계
+
+---
+
+## 3. FSM 기반 제어 시스템
+
+### 문제
+
+- HOME, MOVE, WINCH 동작이 서로 충돌
+- 조건문으로 상태를 관리하다 버그 폭발
+
+### 접근
+
+이벤트 기반 FSM 도입:
+
+```c
+app_fsm_handle_event(APP_FSM_EVT_CMD_HOME_ALL);
+```
+
+**상태 정의:**
+
+```
+IDLE
+HOME_RUNNING
+MOVE_RUNNING
+FAULT
+```
+
+![FSM 상태 전이 다이어그램 — 상태별 이벤트 처리 구조](/images/threebot/fsm-diagram.png)
+
+**제약 조건:**
+- `HOME_RUNNING` 상태에서 WINCH 명령 → 무시
+- `FAULT` 상태 → 모든 동작 중단, 수동 리셋 필요
+
+### 결과
+
+- 동작 간 충돌 완전 제거
+- 복잡한 시퀀스도 상태 기반으로 안정 제어
+- 유지보수성 대폭 향상
+
+<Callout type="insight">
+조건문 분기로 상태를 관리하면 경우의 수가 지수적으로 늘어난다. 상태가 3개만 돼도 FSM이 압도적으로 유리하다.
+</Callout>
+
+---
+
+## 4. 스테퍼 모터 PWM 제어 (TIM3)
+
+### 문제
+
+- 정확한 스텝 수 제어 필요
+- 모터 현재 위치 추적 불가능
+
+### 접근
+
+TIM3 PWM + Update Interrupt 조합. PWM이 1펄스 나갈 때마다 ISR에서 스텝 카운트를 증가시킨다.
+
+```c
+void TIM3_IRQHandler(void)
+{
+    drv_tim3_pwm_on_update_isr();
+}
+```
+
+```c
+// ISR 내부
+current_steps++;
+if (current_steps >= target_steps) {
+    pwm_stop();
+    done = 1;
+}
+```
+
+**채널 매핑:**
+
+```
+CH1 → X1 모터
+CH2 → X2 모터
+CH3 → Y1 모터
+```
+
+![스테퍼 모터 내부 구조 — 볼 스크류 메커니즘](/images/threebot/stepper-structure-1.png)
+
+조립 중 볼베어링이 끼이는 문제가 발생했다. 구슬 4개가 내부에서 고착돼 모터가 손으로도 안 돌아갔다. 철사를 틈새에 끼워 망치로 두드려 순간적인 충격으로 해결했다.
+
+![스테퍼 모터 볼베어링 재조립 작업 현장](/images/threebot/stepper-bearing-fix.jpg)
+
+### 결과
+
+- 정확한 스텝 기반 위치 제어
+- 논블로킹 비동기 제어 (메인 루프 블로킹 없음)
+- 다축 동시 제어 기반 확보
+
+---
+
+## 5. 원점 정렬(Homing) 알고리즘
+
+### 문제
+
+- 전원 인가 시 초기 위치 불명 → 절대 좌표 사용 불가
+- ALM 센서 기반의 안전한 초기화 필요
+
+### 접근
+
+단일 축 호밍을 5단계 FSM으로 구성:
+
+```
+SEEK → ABSORB → RESET → BACKOFF → ZERO
+```
+
+| 단계 | 동작 |
+|------|------|
+| SEEK | ALM 센서 감지될 때까지 저속 전진 |
+| ABSORB | 센서 신호 안정화 대기 |
+| RESET | PWM 정지 |
+| BACKOFF | 역방향으로 일정 스텝 후퇴 |
+| ZERO | 현재 위치를 0으로 설정 |
+
+Active-Low 센서 처리:
+
+```c
+if (alm_triggered) {
+    pwm_stop();
+    fsm_state = ABSORB;
+}
+```
+
+듀얼 모터(X1/X2) 동기화: 두 축이 동시에 호밍 완료될 때까지 대기 후 다음 단계 진입.
+
+### 결과
+
+- 완전 자동 원점 정렬 구현
+- 좌표계 초기화 가능
+- 이후 `GOTO` 명령 사용 가능한 기반 확보
+
+---
+
+## 6. GOTO 절대좌표 이동
+
+### 문제
+
+- 상대 이동이 아닌 절대 좌표 기반 제어 필요
+- 현재 위치와 목표 위치 간 델타 계산
+
+### 접근
+
+```c
+delta = target - current;
+Move_Steps(delta);
+```
+
+이동 완료 후 현재 좌표 갱신:
+
+```c
+current_pos += executed_steps;
+```
+
+STOP 명령이 중간에 들어오면 실제로 움직인 스텝(`executed_steps`)만 반영 — 이동 중단 시에도 좌표가 오염되지 않는다.
+
+### 결과
+
+- 정밀 절대 위치 제어
+- HOME 후 좌표계가 수립되면 임의 위치로 이동 가능
+
+---
+
+## 7. STOP / 안전 처리
+
+### 문제
+
+- STOP 시 좌표 오염 (실제 이동과 기록 불일치)
+- ISR race condition 가능성
+- 리밋 센서 무시 위험
+
+### 접근
+
+STOP 처리 순서를 엄격하게 고정:
+
+```c
+disable_irq();
+read_steps();     // ISR에서 카운트 읽기
+stop_pwm();       // PWM 중단
+enable_irq();
+```
+
+리밋 센서 감지 시 즉시 FAULT 상태로 전환 — 소프트웨어 명령 없이 하드웨어 수준에서 차단.
+
+### 결과
+
+- 좌표 정확도 유지 (부분 이동도 정확히 반영)
+- race condition 없는 안전한 정지
+- 하드웨어 손상 방지
+
+---
+
+## 8. HOME / MOVE / WINCH 상호배타 제어
+
+### 문제
+
+- 여러 액션을 동시 수행하면 모터가 충돌
+- 위험한 동작 조합 가능성 존재
+
+### 접근
+
+FSM 상태에서 명령 수락 여부를 결정:
+
+```
+HOME 진행 중   → WINCH 명령 거부
+FAULT 상태     → 모든 이동 명령 거부
+MOVE 진행 중   → HOME 명령 거부
+```
+
+![WINCH 핀 배선 — PD14/PD13 릴레이 제어 구조](/images/threebot/winch-pinout.png)
+
+STM32 GPIO 핀은 릴레이 모듈 IN 핀으로만 연결 — 고압(24V 윈치) 회로와 완전 분리. 릴레이 제어 배선:
+
+![STM32 전장 배선 및 컨트롤 패널 작업](/images/threebot/stm32-hardware-1.jpg)
+
+![릴레이 모듈을 이용한 윈치 제어 — 가정용 청소기 해체 후 전원부 재조립](/images/threebot/vacuum-winch-wiring.jpg)
+
+명령을 받아도 현재 상태가 허용하지 않으면 `NAK` 응답 후 폐기.
+
+### 결과
+
+- 동시 실행으로 인한 물리적 충돌 원천 차단
+- 실제 장비 적용 가능한 수준의 안전성 확보
+
+---
+
+## 시행착오 — 노이즈로 인한 오동작
+
+브라운아웃(전압 강하)으로 STM32가 리셋되거나 릴레이가 오동작하는 문제가 반복됐다. 모터가 큰 전류를 끌 때 전원 라인 전압이 순간적으로 떨어지면서 MCU가 오동작했다.
+
+![노이즈 디버깅 — 브라운아웃 원인 분석](/images/threebot/noise-debug-1.png)
+
+![디커플링 커패시터 추가 및 전원 분리 후 안정화](/images/threebot/noise-debug-2.png)
+
+**대응:**
+- 서보/모터 전원과 MCU 전원 완전 분리
+- 전원 라인에 디커플링 커패시터 추가
+- 소프트웨어 디바운싱으로 잘못된 센서 신호 필터링
+
+![최종 하드웨어 — 전장 박스 및 컨트롤 패널 완성](/images/threebot/stm32-hardware-2.jpg)
+
+---
+
+## 9. 테스트 구조 설계 (Host Test)
+
+### 문제
+
+- MCU 보드 없이는 로직 테스트 불가
+- 드라이버 레이어가 하드웨어에 직접 의존
+
+### 접근
+
+드라이버 인터페이스를 헤더로 분리하고, 테스트 환경에서는 fake driver로 교체:
+
+```
+Core/Inc/          → 실제 하드웨어 API 정의
+host_test/include/ → PC에서 실행되는 stub 구현
+```
+
+로직 레이어(`app`, `service`)는 어느 쪽 헤더를 쓰든 동일하게 컴파일된다.
+
+### 결과
+
+- PC 환경에서 FSM / 명령 파싱 로직 단독 테스트 가능
+- 보드 없이 개발 → 보드 연결 후 통합 순서로 작업 가능
+
+---
+
+## 전체 아키텍처 흐름
+
+```
+[Jetson Orin]
+    UART ↓ "GOTO:100..200\n"
+[app_cmd]
+    명령 파싱 ↓ EVT_CMD_GOTO
+[app_fsm]
+    상태 확인 ↓ IDLE → MOVE_RUNNING
+[svc_stepper]
+    delta 계산 ↓ Move_Steps(dx, dy)
+[drv_tim3_pwm]
+    TIM3 PWM 출력 → 스테퍼 모터
+    ISR: step count 증가 → done 감지
+[app_fsm]
+    MOVE_RUNNING → IDLE
+    UART ↑ "DONE\n"
+[Jetson Orin]
+```
+
+---
+
+## 다음 단계
+
+- **Depth 카메라 + 좌표 제어 통합** — 비전 데이터를 GOTO 좌표로 변환
+- **Vision → GOTO 자동화** — 빗물받이 위치를 카메라로 감지해 자동 이동
+- **듀얼 모터 동기화 알고리즘** — X1/X2 속도 편차 보정
+- **현장 테스트 및 문제 사례** — 실제 빗물받이 위에서 발생한 이슈들
+
+---
+
+_시리즈: [쓰리봇 — 빗물받이 관리](/series/threebot) · 다음: [네이버 지도 전환 트러블슈팅](/posts/threebot/naver-map-troubleshooting) →_

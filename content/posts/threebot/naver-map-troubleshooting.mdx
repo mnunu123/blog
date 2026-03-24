@@ -1,0 +1,150 @@
+---
+title: "쓰리봇 빗물받이 웹앱 — 네이버 지도 전환 후 만난 5가지 문제와 해결"
+slug: "naver-map-troubleshooting"
+series: "threebot"
+seriesOrder: 2
+category: "troubleshooting"
+createdAt: "2026-02-12"
+summary: "Leaflet에서 네이버 지도 API로 전환하면서 발생한 이벤트 리스너, 드래그 차단, 마커 좌표 불일치, 무한 재귀, API 메서드 불일치 문제 5개와 최종 OverlayView 구조 변경까지"
+tags: ["Next.js", "Naver Maps", "TypeScript"]
+thumbnail: "/thumbnails/threebot/naver-map-troubleshooting.png"
+githubUrl: "https://github.com/mnunu123/threebot-website"
+projectStatus: "completed"
+readingTime: 8
+---
+
+## 한 줄 요약
+
+> Leaflet에서 네이버 지도로 교체했더니, API 호환성 문제가 연쇄적으로 터졌다. 각 문제의 원인과 해결 과정을 기록한다.
+
+---
+
+## 배경
+
+쓰리봇 빗물받이 현황 웹앱은 처음에 Leaflet 기반 지도를 사용했다. 이후 **네이버 지도 API**로 전환하면서 기존 코드와의 호환성 문제가 연속으로 발생했다. 같은 "지도 라이브러리"라도 API 설계 철학이 달라서 단순 교체로는 해결이 안 됐다.
+
+![네이버 지도 API 연동 화면](/images/threebot/naver-map-api-1.png)
+
+---
+
+## 문제 1: 지도 이동/줌 시 빗물받이 경로가 갱신되지 않음
+
+**원인**: Leaflet은 `map.on('moveend', handler)` 방식이지만, 네이버 지도는 이 방식을 지원하지 않는다.
+
+```typescript
+// ❌ Leaflet 방식 — 네이버에서 동작 안 함
+map.on('moveend', () => updatePoints())
+
+// ✅ 네이버 방식
+naver.maps.Event.addListener(map, 'idle', () => updatePoints())
+```
+
+**해결**: Leaflet 분기 뒤에 Naver 전용 분기 추가. 지도 이동/줌 종료 시 `updatePoints()`가 호출되어 경로가 다시 그려짐.
+
+---
+
+## 문제 2: 빗물받이 보일 때 지도 드래그가 안 됨
+
+**원인**: 빗물받이를 그리는 캔버스가 `pointer-events: auto`로 마우스 이벤트를 가로채고, 드래그 핸들러는 부모 `div`에만 연결되어 있었다. 캔버스 위에서는 드래그가 통하지 않았다.
+
+**1차 해결 (임시)**: `handleDeckPointerDown/Move/Up`를 `Canvas2DDrainageOverlay`에 props로 넘겨 캔버스에 직접 연결.
+
+**최종 해결 (OverlayView 도입 후)**: 오버레이 컨테이너를 `pointer-events: none`으로 설정해, 드래그/휠 이벤트가 모두 지도로 전달되도록 변경. 별도 이벤트 전달 코드 전부 제거.
+
+```typescript
+// DrainageOverlay.onAdd()
+container.style.pointerEvents = 'none'  // 지도 이벤트 방해하지 않음
+```
+
+---
+
+## 문제 3: 시·도 필터 선택 시 빗물받이 마커가 안 보임
+
+**원인**: 대구광역시를 선택하면 데이터는 854건이 넘어오는데 화면에 안 나타났다. Canvas 뷰는 `deckViewState` 기준으로 그리는데, `flyTo(대구)`로 지도가 이동하기 전까지 `deckViewState`는 서울 중심이었다. 대구 좌표 854개가 화면 밖에 그려지고 있었던 것.
+
+**1차 해결 (임시)**: `dataCenter`, `dataZoom` props 추가. 현재 뷰 중심이 데이터 중심에서 0.5° 이상 멀면 `deckViewState`를 강제로 데이터 중심으로 맞춤.
+
+**최종 해결 (OverlayView 도입 후)**: `draw()`에서 `map.getBounds()`를 직접 읽어 그리기 때문에, 지도가 이동하면 자동으로 올바른 bounds로 다시 그려진다. 별도 뷰 동기화 로직 불필요.
+
+---
+
+## 문제 4: Maximum call stack size exceeded (무한 재귀)
+
+**원인**: 다음과 같이 `overlay.draw`를 덮어씌웠다:
+
+```typescript
+// ❌ 무한 재귀 발생
+overlay.draw = () => {
+  overlay.draw()  // 방금 대입한 자기 자신을 호출!
+}
+```
+
+`overlay.draw`를 함수로 덮어쓴 뒤, 그 함수 안에서 `overlay.draw()`를 호출하니 자기 자신을 무한 호출했다.
+
+**해결**: `overlay.draw` 덮어쓰기 전체 제거. `DrainageOverlay` 클래스가 이미 `draw()`를 가지고 있으므로 클래스 메서드 그대로 사용.
+
+---
+
+## 문제 5: bounds.getSouthwest is not a function
+
+**원인**: 네이버 지도 API의 `LatLngBounds`는 `getSW()` / `getNE()`를 제공하는데, Leaflet 방식인 `getSouthWest()` / `getNorthEast()`를 그대로 사용했다.
+
+```typescript
+// ❌ Leaflet 방식
+const sw = bounds.getSouthWest()
+
+// ✅ 네이버 방식 (+ fallback)
+const sw = bounds.getSW?.() ?? bounds.getSouthWest?.()
+if (!sw || typeof sw.lat !== 'function') return
+```
+
+**해결**: 네이버 방식(`getSW`, `getNE`)을 우선 사용하고, 호환을 위해 Leaflet 방식을 fallback으로. null/타입 검사도 추가.
+
+---
+
+## 최종 구조 변경: OverlayView 도입
+
+![OverlayView 적용 후 빗물받이 오버레이 결과](/images/threebot/naver-map-api-2.png)
+
+5개 문제를 각각 패치하다 보니 코드가 복잡해졌다. 근본 원인은 **네이버 지도 API의 의도된 사용 방식**을 따르지 않은 것. 네이버 공식 가이드의 `OverlayView` 패턴으로 전체 구조를 재작성했다.
+
+### 변경 전 vs 변경 후
+
+| 항목 | 변경 전 | 변경 후 |
+|------|--------|--------|
+| 드래그 핸들러 | 커스텀 `handleDeckPointer*` 3개 | 제거 (네이티브 지도에 위임) |
+| 뷰 동기화 | `deckViewState`, `deckOverlaySize`, `projectToScreen` | 제거 (`map.getBounds()` 직접 사용) |
+| 이벤트 | Leaflet 방식 혼용 | `naver.maps.Event.addListener` 통일 |
+| 캔버스 포인터 | `pointer-events: auto` | `pointer-events: none` |
+
+### 핵심 코드 구조
+
+```typescript
+// src/lib/naver-drainage-overlay.ts
+class DrainageOverlay extends naver.maps.OverlayView {
+  onAdd() {
+    const canvas = document.createElement('canvas')
+    canvas.style.pointerEvents = 'none'  // 지도 이벤트 방해 안 함
+    this.getPanes().overlayLayer.appendChild(canvas)
+  }
+
+  draw() {
+    const bounds = this.getMap().getBounds()
+    const sw = bounds.getSW()
+    const ne = bounds.getNE()
+    // bounds 기준으로 빗물받이 그리기
+  }
+}
+```
+
+---
+
+## 결과
+
+- pan/zoom은 네이티브 지도 동작만 사용 (별도 핸들러 없음)
+- 오버레이는 지도 API가 생명주기 관리
+- 커스텀 이벤트 전달/뷰 동기화 코드가 사라져 코드 200줄 이상 감소
+
+---
+
+_시리즈: [쓰리봇 — 빗물받이 관리](/series/threebot) · 이전: [쓰리봇 웹앱 개요] · 다음: [무게 센서 모듈] →_

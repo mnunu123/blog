@@ -1,0 +1,295 @@
+---
+title: "면접훈련 로봇 설계 — InMoov i2Head를 AI 인터페이스 장치로 바라보기"
+slug: "inmoov-architecture-overview"
+series: "interview-robot"
+seriesOrder: 1
+category: "project"
+createdAt: "2026-03-20"
+summary: "InMoov 오픈소스 휴머노이드를 면접관 인터페이스로 활용하는 전략 — i2Head만 구현하는 이유, 15개 서보로 얼굴 표정을 구현하는 방법, MyRobotLab을 bring-up 도구로만 쓰는 이유, AI 서버와 로봇 컨트롤러를 완전 분리하는 아키텍처까지"
+tags: ["Python", "IoT", "Robotics", "FastAPI", "Arduino"]
+thumbnail: "/thumbnails/interview-robot/inmoov-architecture-overview.png"
+projectStatus: "in-progress"
+readingTime: 12
+---
+
+## 목표
+
+InMoov 오픈소스를 활용해 **멀티모달 AI 기반 면접훈련 로봇**의 물리적 인터페이스(얼굴/상반신)를 구현한다.
+
+성공 조건은 하나다.
+
+> "로봇 구현"이 아니라 👉 **"면접관처럼 느껴지는 인터페이스 구현"**
+
+---
+
+## 왜 InMoov i2Head인가
+
+직접 휴머노이드를 설계하면 시간과 비용이 과다하고, 기성 로봇을 사면 표현력이 부족하다. InMoov는 두 문제를 동시에 해결한다.
+
+![InMoov i2Head 여성형 — 실리콘 피부를 씌운 완성 버전](/images/interview-robot/i2head-female.png)
+
+![InMoov i2Head 남성형](/images/interview-robot/i2head-male.jpg)
+
+**선택 기준:**
+- 3D 프린팅으로 직접 출력 가능 → 하드웨어 비용 대폭 절감
+- 얼굴 표현(눈·눈썹·뺨·입술·이마) 서보 15개 내장 가능
+- 실리콘 피부(Smooth-On Ecoflex 00-10)로 실제 피부 질감 재현
+- 완전 오픈소스 ([STL 파일 공개](https://inmoov.fr/inmoov-stl-parts-viewer/?bodyparts=i2Head))
+- MyRobotLab 통합 지원
+
+**결론: 하드웨어 개발 리스크 제거 + 빠른 프로토타이핑**
+
+---
+
+## i2Head 구조 상세
+
+i2Head는 기존 InMoov head의 업그레이드 버전이다. 3피스톤 목 구조와 호환되며, 얼굴 표정을 위한 서보 배치가 크게 늘었다.
+
+![i2Head 내부 구조 렌더링 — 서보 배치 확인](/images/interview-robot/i2head-render-1.png)
+
+![i2Head 분해도 — 각 파트 구성](/images/interview-robot/i2head-render-2.png)
+
+![i2Head 전체 조립 개요](/images/interview-robot/i2head-overview.png)
+
+### 서보 배치 (총 17개)
+
+| 부위 | 서보 이름 | 개수 |
+|------|----------|------|
+| 눈 (상하/좌우) | eyeLeftUD, eyeLeftLR, eyeRightUD, eyeRightLR | 4 |
+| 눈꺼풀 | eyelidLeftUpper, eyelidLeftLower, eyelidRightUpper, eyelidRightLower | 4 |
+| 눈썹 | eyebrowRight, eyebrowLeft | 2 |
+| 뺨 | cheekRight, cheekLeft | 2 |
+| 입술 | upperLip | 1 |
+| 이마 | forheadRight, forheadLeft | 2 |
+| 목 (대형 서보) | JX PDI 6221MG | 2 |
+
+![서보 배치도 — 얼굴 각 부위별 서보 위치](/images/interview-robot/i2head-servo-layout.png)
+
+### 얼굴 표정 애니메이션
+
+![i2Head 표정 표현 범위](/images/interview-robot/i2head-animation-face.gif)
+
+![i2Head 전체 동작 개요](/images/interview-robot/i2head-animation-overview.gif)
+
+소프트웨어에서 음성 명령으로 프리셋 표정을 호출할 수 있다:
+
+```
+NEUTRAL, ANGRY, WINK, DISGUST, FEAR,
+HAPPY, SMILE, SAD, SIGH, SORRY,
+SUSPICIOUS, THINKING, UNAMUSED
+```
+
+---
+
+## 면접 로봇에서 사용하는 부위
+
+전신 구현은 난이도가 폭발한다. 면접에 필요한 최소 단위만 구현한다.
+
+**구현하는 것:**
+```
+eyes  → 시선 표현 (응시, 회피, 눈 깜빡임)
+jaw   → 말하기 표현 (TTS 발화 동기화)
+neck  → 반응 / 끄덕임 / 고개 젓기
+eyebrows → 감정 표현 (경청, 의문)
+```
+
+**제외한 것:**
+- 팔 제스처, 보행, 전신 동작
+
+면접관 느낌을 내는 데 이 세 가지면 충분하다. **최소 비용으로 최대 효과.**
+
+---
+
+## 하드웨어 구성
+
+InMoov 전체 BOM은 너무 크다. 3개 세트로 분리해서 관리한다.
+
+**1) 기계 구조**
+- i2Head STL 출력물 (PLA 또는 PETG)
+- 실리콘 피부: Smooth-On Ecoflex 00-10 (500~600g)
+- 네오디뮴 자석 28개 (10×1.5mm) — 피부 탈부착용
+
+**2) 제어**
+- Arduino Mega
+- PCA9685 (16채널 서보 드라이버)
+- JX PDI 1109MG 서보 × 15개
+- JX PDI 6221MG 서보 × 2개 (목 대형)
+- 서보 전용 전원 (5~6V, 별도 분리)
+
+**3) 인터랙션**
+- 마이크로 카메라 1~2개 (눈 내부 삽입)
+- 마이크 (음성 입력)
+- 스피커 (TTS 출력)
+- PC (AI 연산)
+
+<Callout type="warning">
+서보 전원과 Arduino 전원은 반드시 분리한다. 서보가 갑자기 큰 전류를 끌면 Arduino가 리셋되는 문제가 생긴다.
+</Callout>
+
+---
+
+## 조립 순서 (3단계)
+
+### Stage 1 — 내부 기어 & 턱 메커니즘
+
+메인기어와 NeckPlateHigh를 M3×16mm 볼트 4개로 연결한다. 이것이 회전 베이스가 된다. 모든 서보는 장착 전에 소프트웨어에서 **90도로 프리셋**해야 한다 — 이걸 건너뛰면 나중에 전부 분해해야 한다.
+
+### Stage 2 — 얼굴 파트 (눈·눈썹·입술)
+
+눈 어셈블리 → 눈썹 메커니즘 → 입술/뺨 컨트롤 순서로 진행. 각 서보를 mount하기 전에 90도 위치를 반드시 확인한다.
+
+### Stage 3 — 두개골 조립 & 실리콘 피부
+
+TopBackSkull → TopSkull → TopSkullFront 순서로 연결. 볼트를 가열해서 플라스틱 캐비티에 압입한다. 실리콘 피부는 몰드에 Smooth-On을 붓고 하루 경화 후 탈형한다.
+
+**실리콘 피부 색상 배합:**
+- 흰색 오일 페인트 (베이스)
+- 빨강 소량
+- 노랑 극소량
+
+---
+
+## MyRobotLab 활용 범위
+
+MyRobotLab은 통합 제어 프레임워크다. 다만 AI 스택이 최신이 아니어서 면접 AI로는 쓸 수 없다.
+
+**MyRobotLab이 담당하는 것:**
+- Arduino 연결 및 서보 attach/detach
+- 기본 모션 테스트
+- PCA9685 캘리브레이션
+- 초기 bring-up
+
+**MyRobotLab이 담당하지 않는 것:**
+- 면접 AI 로직
+- LLM 호출
+- 멀티모달 분석
+- 음성 처리
+
+```
+MyRobotLab  →  하드웨어 bring-up 도구
+Python 서버 →  AI 로직 전체
+```
+
+---
+
+## 로봇 제어 — Preset 기반
+
+실시간 서보 제어는 복잡도가 높다. 미리 정의된 자세(preset)를 상태에 따라 실행하는 방식으로 단순화했다.
+
+```python
+def listen_pose():    # 듣는 자세 — 살짝 앞으로 기울기
+def ask_pose():       # 질문하는 자세 — 정면 응시
+def nod_small():      # 작게 끄덕임
+def look_center():    # 정면 응시
+def thinking_pose():  # 생각하는 자세 — 시선 약간 위
+```
+
+상태 흐름:
+```
+Idle → Asking → Listening → Evaluating → Idle
+```
+
+각 상태 전환 시 대응되는 preset을 실행한다. 코드가 단순해지고 동작이 자연스러워진다.
+
+---
+
+## AI 서버와 로봇 컨트롤러 완전 분리
+
+로봇과 AI를 하나의 시스템에 묶으면 복잡도가 폭발한다.
+
+```
+[AI Server]
+├── STT (음성 인식)
+├── LLM (질문 생성 / 평가)
+├── TTS (음성 합성)
+└── 면접 평가 로직
+
+[Robot Controller]
+├── 서보 제어 (Arduino + PCA9685)
+└── motion preset 실행
+
+[Bridge API]
+├── 질문 요청
+├── 발화 시작/종료 신호
+└── 상태 전환 명령
+```
+
+AI 서버가 바뀌어도 로봇 컨트롤러는 그대로다. 로봇 하드웨어가 바뀌어도 AI 로직은 그대로다. **확장성 확보 + 각 파트 독립 디버깅 가능.**
+
+---
+
+## 3단계 개발 전략
+
+실물 로봇부터 개발하면 실패 확률이 높다. 단계를 나눠 리스크를 분산한다.
+
+**1단계 — 가상 검증**
+- 텍스트 기반 면접 흐름 구현
+- LLM 연동 테스트
+
+**2단계 — 반실물 검증**
+- 음성 입출력 연결
+- TTS → 스피커 출력 확인
+
+**3단계 — 실물 연결**
+- i2Head 조립
+- 서보 캘리브레이션
+- motion preset 연동
+
+---
+
+## InMoov의 한계와 대응
+
+| 한계 | 대응 전략 |
+|------|---------|
+| 레거시 구조 (MyRobotLab) | AI 서버 완전 분리 |
+| 서보 튜닝 복잡 | preset 기반 제어로 단순화 |
+| BOM이 방대함 | head-only 구현 |
+| 연산 성능 제한 | AI 연산은 PC에서 처리 |
+
+**결론: InMoov = 껍데기 / AI = 두뇌**
+
+---
+
+## 핵심 인사이트
+
+**Before**: InMoov = 휴머노이드 로봇 프로젝트
+
+**After**: InMoov = **인간 인터페이스 장치**
+
+로봇을 "기계"가 아니라 "UX 디바이스"로 바라봤을 때 구현 방향이 완전히 달라졌다. 면접관처럼 느껴지려면 움직임의 정밀도보다 **타이밍과 시선, 그리고 발화 동기화**가 훨씬 중요하다.
+
+i2Head는 그 요구사항을 충족하는 최선의 오픈소스다 — 17개 서보로 눈·눈썹·뺨·입술·이마까지 움직이는 얼굴이 만들어진다.
+
+---
+
+## 전체 아키텍처
+
+```
+[InMoov i2Head]
+  눈·눈꺼풀·눈썹·뺨·입술·이마·목 서보 (17개)
+       ↓
+[Robot Controller]
+  motion preset 실행
+  Arduino + PCA9685
+       ↓
+[Bridge API]
+  상태 전환 / 발화 요청
+       ↓
+[AI Server]
+  STT → LLM → TTS → 평가
+       ↓
+[Web Platform]
+  기록 / 리포트 / 관리
+```
+
+---
+
+**참고 자료**
+- InMoov i2Head 공식 페이지: https://inmoov.fr/i2head-for-inmoov/
+- STL 파일 뷰어: https://inmoov.fr/inmoov-stl-parts-viewer/?bodyparts=i2Head
+- 조립 튜토리얼: https://inmoov.fr/headi2/
+- MyRobotLab: https://myrobotlab.org/
+
+---
+
+_시리즈: [면접훈련 로봇](/series/interview-robot) · 다음: 하드웨어 조립기 →_

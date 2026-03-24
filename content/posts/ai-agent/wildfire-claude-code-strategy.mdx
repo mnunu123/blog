@@ -1,0 +1,225 @@
+---
+title: "Claude Code로 멀티서비스 프로젝트 자동 구현하기 — 산불 CCTV 시스템 기획 과정"
+slug: "wildfire-claude-code-strategy"
+series: "ai-agent-automation"
+seriesOrder: 4
+category: "experiment"
+createdAt: "2026-03-26"
+summary: "협업형 CCTV 산불 예측 시스템을 Claude Code에게 구현시키기 위해 아키텍처를 고정하고, 기술 스택을 제한하고, 마스터 프롬프트를 설계한 과정 — AI 에이전트가 설계자가 아닌 구현자로 움직이게 만드는 방법"
+tags: ["Claude API", "Multi-Agent", "Automation", "Python", "Docker"]
+thumbnail: "/thumbnails/ai-agent/wildfire-claude-code-strategy.png"
+projectStatus: "in-progress"
+readingTime: 11
+---
+
+## 이 글에서 다루는 것
+
+"좋은 AI 프로젝트 기획"이 아니라, **Claude Code가 실제로 코드를 뽑아내게 만드는 실행 전략**이다.
+
+산불 CCTV 협업 감지 시스템을 사례로, AI 코딩 에이전트를 통한 반자동 개발의 성공 조건을 정리한다.
+
+---
+
+## 1. 왜 이 아이템인가
+
+기존 산불 감지는 단일 CCTV가 연기·불꽃을 감지하는 수준에 머문다. 한 단계 더 나아간 문제를 잡았다.
+
+> **"카메라들이 서로 정보를 공유하고 발화 지점을 추론한다"**
+
+핵심 구조:
+
+```
+YOLO 기반 객체 감지
+  └─ person / smoke / fire 탐지
+
+OpenCV Optical Flow
+  └─ 연기 ROI 내부 이동 벡터 추론
+
+멀티카메라 Fusion
+  └─ 각 카메라 이벤트 → 발화 의심 지점 추정
+```
+
+단순 감지가 아니라 **협업 추론**이 핵심이었고, 이 복잡도 때문에 처음부터 Claude Code를 어떻게 활용할지 전략이 필요했다.
+
+---
+
+## 2. 오픈소스 조합으로 MVP 가장 빠르게 만들기
+
+직접 처음부터 구현하는 건 비효율적이다. 이미 있는 것을 조합한다.
+
+| 역할 | 선택한 오픈소스 |
+|------|--------------|
+| 객체 감지 | Ultralytics YOLO (대안: YOLOX, MMDetection) |
+| 연기 방향 분석 | OpenCV optical flow |
+| 스트림 처리 | MediaMTX |
+| 이벤트 버스 | Mosquitto |
+| 라벨링 | CVAT, Label Studio |
+| 대시보드 | React + Leaflet |
+
+개발 순서:
+```
+1. 단일 카메라 감지
+2. 연기 이동 벡터 계산
+3. 다중 카메라 fusion
+4. 대시보드 시각화
+```
+
+완벽한 시스템을 처음부터 만들지 않는다. 점진적으로 쌓는다.
+
+---
+
+## 3. Claude Code 자동 구현 가능성 검토
+
+이 프로젝트에서 가장 먼저 물어야 했던 질문:
+
+> "내가 거의 개입하지 않고 Claude Code에 프롬프트만 넣어서 끝까지 구현시킬 수 있는가?"
+
+**결론**: 완전 무개입 100% 자동 완성은 위험하다. 하지만 아래 조건이면 성공 확률이 크게 올라간다.
+
+<Callout type="insight">
+Claude Code는 설계를 창작하게 하면 흔들린다. 정해진 구조를 구현하게 하면 강하다.
+</Callout>
+
+성공 조건 4가지:
+1. 구조를 미리 고정한다
+2. 사용할 오픈소스를 제한한다
+3. 구현 단계를 쪼갠다
+4. 각 단계마다 실행/검증 기준을 명시한다
+
+---
+
+## 4. 에이전트/스킬 단위로 쪼개기
+
+Claude Code가 실패하는 가장 큰 이유: 설계와 구현이 뒤섞여 있기 때문이다.
+
+시스템을 역할이 명확한 모듈로 분리했다.
+
+| 에이전트/스킬 | 역할 |
+|-------------|------|
+| **Ingest Agent** | RTSP/파일 입력, 프레임 샘플링, timestamp 부여 |
+| **Detection Agent** | person / smoke / fire 탐지 |
+| **Smoke Flow Skill** | smoke ROI optical flow, 방향 벡터 + 안정성 점수 |
+| **Fusion Agent** | 카메라별 이벤트를 시간축으로 결합, 발화 의심점 추정 |
+| **Alert Agent** | 위험 점수 계산, persistence 조건, 경보 발생 |
+| **Dashboard Agent** | 카메라 화면, 탐지 박스, 지도 위 발화 의심점, 알림 이력 |
+
+핵심 원칙:
+- 각 모듈은 독립 실행 가능해야 한다
+- 서비스 간 통신은 JSON 스키마로 고정한다
+
+```python
+# 이벤트 스키마 (고정)
+FrameMeta      # 프레임 메타데이터
+DetectionEvent # 탐지 결과
+SmokeFlowEvent # 연기 흐름 벡터
+FusionEvent    # 융합 추론 결과
+AlertEvent     # 경보 이벤트
+```
+
+Claude Code에 "큰 프로젝트 하나"로 던지는 대신, **"정해진 역할을 가진 작은 모듈 집합"**으로 나눠서 구현시킨다.
+
+---
+
+## 5. Claude 공식 Skills 저장소 활용
+
+Claude Code의 공식 skills 저장소를 이 프로젝트에 연결하는 방식:
+
+| Skill | 이 프로젝트에서 활용 |
+|-------|-------------------|
+| `frontend-design` | 대시보드 UI 계층 구조 설계 |
+| `web-artifacts-builder` | 시각적 대시보드 컴포넌트 생성 |
+| `webapp-testing` | 브라우저 동작 검증 |
+| `skill-creator` | 프로젝트 전용 스킬화 (재사용) |
+| `mcp-builder` | 외부 연동 필요 시만 사용 |
+
+중요한 관점 전환: skills를 "마법처럼 알아서 다 해주는 도구"로 보는 게 아니라, **각 구현 구간에서 Claude가 참고할 작업 패턴**으로 쓰는 것이 현실적이다.
+
+---
+
+## 6. 마스터 프롬프트 설계
+
+Claude Code가 리서치 결과와 구조를 흔들지 않고 그대로 구현하게 만드는 프롬프트. "좋은 설명"이 아니라 **"실제로 개발을 움직이는 실행 명령"**이어야 한다.
+
+마스터 프롬프트에 강하게 넣은 요소들:
+
+**운영 모드 고정**
+```
+- 재설계 금지
+- 임의 기술 교체 금지
+- 단계별 구현만 허용
+```
+
+**허용 기술 스택 (명시적 제한)**
+```
+Python / FastAPI / OpenCV / Ultralytics YOLO
+React / Leaflet / Docker Compose
+```
+
+**구현 순서 강제**
+```
+Phase 1: 프로젝트 bootstrap
+Phase 2: 단일 카메라 파이프라인
+Phase 3: 대시보드 기본 구현
+Phase 4: 멀티카메라 fusion
+Phase 5: alerting
+Phase 6: 검증 및 테스트
+```
+
+**서비스 폴더 구조 고정**
+```
+ingest-service/
+detection-service/
+smoke-flow-service/
+fusion-service/
+alert-service/
+dashboard/
+```
+
+이 프롬프트의 핵심: Claude를 **"기획자"가 아니라 "정해진 공정의 구현자"**로 제한하는 것.
+
+---
+
+## 7. AI 에이전트 자동 구현의 4가지 원칙
+
+이 프로젝트 전체 과정에서 정리된 원칙들.
+
+### 원칙 1: 구조를 먼저 고정한다
+폴더 구조, 서비스 책임, 데이터 스키마를 프롬프트 이전에 설계한다. Claude가 구조를 결정하게 하면 안 된다.
+
+### 원칙 2: 오픈소스 선택지를 제한한다
+Claude가 멋대로 새로운 스택을 찾지 못하게 허용 목록을 명시한다. 선택지가 없으면 흔들리지 않는다.
+
+### 원칙 3: 작게 나눠 단계적으로 구현한다
+```
+단일 카메라 감지 → 검증
+  ↓
+멀티카메라 연결 → 검증
+  ↓
+fusion 로직 → 검증
+  ↓
+대시보드 → 검증
+```
+각 단계를 통과해야 다음 단계로 간다.
+
+### 원칙 4: 검증 가능하게 만든다
+```python
+# fake_event_generator.py
+# 실제 카메라 없이 이벤트 스트림을 시뮬레이션
+# 각 서비스가 독립적으로 테스트 가능하도록
+```
+
+README에 "이 명령어를 실행하면 이 결과가 나와야 한다"를 단계마다 명시한다.
+
+---
+
+## 결론
+
+이 프로젝트는 단순히 "산불 감지 시스템 기획"이 아니다.
+
+**AI 코딩 에이전트가 제대로 움직일 수 있는 개발 체계 자체를 설계한 사례**다.
+
+실제 구현은 다음 포스트에서.
+
+---
+
+_시리즈: [AI 에이전트 자동화](/series/ai-agent) · 관련 프로젝트: [산불 CCTV 협력 감지 시스템](/series/wildfire-cctv) →_

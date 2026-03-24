@@ -1,0 +1,284 @@
+---
+title: "쓰리봇 웹앱 심화 — GeoJSON 경계 병합, 색상 설계, 렌더링 구조 분리"
+slug: "geojson-rendering-architecture"
+series: "threebot"
+seriesOrder: 5
+category: "devlog"
+createdAt: "2026-03-15"
+summary: "행정동 단위로 쪼개진 GeoJSON을 시군구 단위로 병합하는 과정, deterministic 색상 생성, fitBounds UX, 그리고 Layout/NaverMap 책임 분리까지 — 지도 서비스에서 데이터보다 렌더링 구조가 더 중요했던 이유"
+tags: ["Next.js", "Naver Maps", "TypeScript", "GeoJSON"]
+thumbnail: "/thumbnails/threebot/geojson-rendering-architecture.png"
+githubUrl: "https://github.com/mnunu123/threebot-website"
+projectStatus: "completed"
+readingTime: 10
+---
+
+## 한 줄 요약
+
+> "단순한 지도 시각화에서 시작했지만, 결국은 데이터 구조·렌더링 흐름·UX 설계를 모두 다뤄야 하는 시스템 문제였다."
+
+![쓰리봇 웹앱 초기 UI 전체 화면 — 지도 + 사이드바 레이아웃](/images/threebot/ui-overview-1.png)
+
+---
+
+## 1. 시군구 경계 — 행정동 조각을 하나로 합치기
+
+**문제**: 원본 GeoJSON은 행정동(읍/면/동) 단위로 쪼개져 있다. 그대로 렌더링하면 "강남구"가 수십 개의 조각으로 보인다.
+
+**접근**: `/api/vworld-boundaries`에서 데이터를 가져온 후, `sgg`(시군구 코드) 기준으로 그룹화해서 하나의 폴리곤으로 병합했다.
+
+```typescript
+// sgg 코드 기준으로 feature 묶기
+const grouped = groupBy(features, f => f.properties.sgg)
+
+// 각 그룹의 Polygon/MultiPolygon 좌표를 하나의 paths 배열로 merge
+const merged: DistrictPolygon = {
+  sgg: key,
+  name: features[0].properties.sggnm,
+  paths: features.flatMap(f => extractPaths(f.geometry))
+}
+```
+
+렌더링 성능을 위해 좌표 수도 제한했다:
+
+```typescript
+const MAX_POINTS_PER_RING = 128
+
+function simplifyRing(ring: LatLng[]): LatLng[] {
+  if (ring.length <= MAX_POINTS_PER_RING) return ring
+  const step = Math.ceil(ring.length / MAX_POINTS_PER_RING)
+  return ring.filter((_, i) => i % step === 0)
+}
+```
+
+**결과**: 시군구 단위로 하나의 영역이 깔끔하게 표시되고, 포인트 수 제한으로 렌더링 속도도 안정화됐다.
+
+---
+
+## 2. 토글 버그 — "숨기기" 눌러도 폴리곤이 남는 문제
+
+**증상**: "구역 숨기기" 버튼을 눌러도 폴리곤이 완전히 사라지지 않고 다른 방식으로 계속 그려졌다.
+
+**원인**: ON/OFF 상태에 따라 렌더링 경로가 달라지는 구조였다. 하나의 경로를 끊어도 다른 경로에서 계속 그렸다.
+
+**해결**: 폴리곤 인스턴스를 ref 배열로 통합 관리하고, OFF 시 전체 제거 → 렌더 함수 진입 차단.
+
+```typescript
+const polygonsRef = useRef<naver.maps.Polygon[]>([])
+
+function clearAllPolygons() {
+  polygonsRef.current.forEach(p => p.setMap(null))
+  polygonsRef.current = []
+}
+
+useEffect(() => {
+  clearAllPolygons()
+  if (!showDistricts) return  // OFF면 여기서 종료
+
+  const polys = districts.map(d => renderPolygon(d))
+  polys.forEach(p => p.setMap(map))
+  polygonsRef.current = polys
+}, [showDistricts, districts])
+```
+
+**결과**: 토글 OFF 시 정확히 0개. 이전 포스트의 3-state 버그와 같은 패턴이었다 — ref 통합으로 해결.
+
+<Callout type="insight">
+네이버 지도 같은 외부 라이브러리 인스턴스는 React 상태로 관리하면 안 된다. ref로 관리하고 effect 진입 시 항상 클리어부터 해야 한다.
+</Callout>
+
+---
+
+## 3. 라벨 중복 — 하나의 구에 라벨이 여러 개
+
+**문제**: 시군구를 보려고 했는데 읍/동 단위로 쪼개져 보이고, 라벨도 조각 수만큼 생성됐다.
+
+**원인**: 프론트에서 각 GeoJSON feature를 개별 엔티티로 처리하고 있었다. 병합 전 feature 하나당 라벨 하나.
+
+**해결**: 백엔드에서 `sgg` 기준으로 그룹화 후 내려주고, 프론트는 하나의 `sgg` = 하나의 엔티티로만 처리.
+
+```typescript
+// 라벨은 병합된 폴리곤의 중심점 1개에만 표시
+const center = calculateCenter(mergedPaths)
+new naver.maps.Marker({
+  map,
+  position: center,
+  icon: { content: `<div class="district-label">${district.name}</div>` }
+})
+```
+
+**결과**: 시군구당 라벨 정확히 1개. 불필요한 세부 분할 제거.
+
+---
+
+## 4. 빗물받이 데이터 1000 → 200개로 줄어든 원인
+
+**증상**: 분명히 DB에 1,000건이 있는데 지도에는 200개만 표시됐다.
+
+**원인 후보를 하나씩 확인**:
+1. API에 `limit=200` 파라미터가 붙어 있었나?
+2. 클라이언트에서 `.slice(0, 200)` 했나?
+3. BBOX 조회 범위가 너무 좁았나?
+
+**찾은 원인**: BBOX API 구현 시 `LIMIT 200`을 임시로 넣어뒀는데 그대로 배포됐다.
+
+```sql
+-- ❌ 임시 제한이 그대로
+SELECT id, lat, lng FROM drainage_data
+WHERE lat BETWEEN :minLat AND :maxLat
+  AND lng BETWEEN :minLng AND :maxLng
+LIMIT 200
+
+-- ✅ 제거 또는 충분한 값으로
+SELECT id, lat, lng FROM drainage_data
+WHERE lat BETWEEN :minLat AND :maxLat
+  AND lng BETWEEN :minLng AND :maxLng
+```
+
+**결과**: 전체 데이터 정상 표시. 시군구 필터 기능과 데이터 로직도 분리해서 서로 간섭하지 않게 정리.
+
+---
+
+## 5. 시군구별 색상 — 매번 같은 색이 나오게
+
+![행정구역 경계 폴리곤이 구별 색상으로 표시된 화면](/images/threebot/ui-overview-2.png)
+
+**문제**: 모든 구가 동일한 색이거나, 새로고침마다 색이 달라지거나, 색이 너무 진해서 마커가 안 보였다.
+
+**접근**: `sgg` 코드를 해시해서 색상을 결정론적으로 생성. 같은 구는 항상 같은 색.
+
+```typescript
+function districtColor(sigCd: string) {
+  // 간단한 해시 → hue 값
+  const hash = sigCd.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0)
+  const hue = hash % 360
+
+  return {
+    stroke: `hsl(${hue}, 60%, 50%)`,
+    fill: `hsl(${hue}, 60%, 75%)`,  // 파스텔 계열
+    opacity: 0.14
+  }
+}
+```
+
+HSL을 쓰면 채도/명도를 고정하고 색상만 바꿀 수 있어서 "전부 비슷하게 연한 색" 범위 안에서 구분이 된다.
+
+**결과**: 구별로 일관된 색상 구분 + 지도와 마커 가독성 유지. `fillOpacity: 0.14`가 핵심이었다.
+
+---
+
+## 6. fitBounds — 시군구 선택 시 자동 이동
+
+**문제**: 필터에서 구를 선택해도 지도가 그 자리에 그대로 있거나, 반대로 너무 과하게 확대됐다.
+
+**접근**: 병합된 폴리곤 좌표에서 bounds를 직접 계산하고, `fitBounds`로 이동하되 줌 범위를 제한했다.
+
+```typescript
+function calcBounds(paths: LatLng[][]) {
+  let minLat = Infinity, maxLat = -Infinity
+  let minLng = Infinity, maxLng = -Infinity
+
+  paths.flat().forEach(({ lat, lng }) => {
+    minLat = Math.min(minLat, lat)
+    maxLat = Math.max(maxLat, lat)
+    minLng = Math.min(minLng, lng)
+    maxLng = Math.max(maxLng, lng)
+  })
+
+  return new naver.maps.LatLngBounds(
+    new naver.maps.LatLng(minLat, minLng),
+    new naver.maps.LatLng(maxLat, maxLng)
+  )
+}
+
+// fitBounds 후 줌이 너무 가까우면 당겨냄
+map.fitBounds(bounds)
+const zoom = map.getZoom()
+if (zoom > MAX_ZOOM) map.setZoom(MAX_ZOOM)
+if (zoom < MIN_ZOOM) map.setZoom(MIN_ZOOM)
+```
+
+**결과**: 필터 선택 시 해당 구가 화면에 꽉 차도록 자동 이동. "딱 맞는 줌" UX 구현.
+
+---
+
+## 7. 렌더링 구조 분리 — 데이터 fetch와 렌더링 책임
+
+**문제**: `NaverMap` 컴포넌트와 `Layout` 양쪽에서 경계 데이터를 fetch하고 있었다. 상태가 꼬이면서 토글 버그, 필터 버그가 연속 발생.
+
+**접근**: 단일 데이터 소스 원칙으로 책임을 분리했다.
+
+| 역할 | 담당 |
+|------|------|
+| 데이터 fetch & 상태 관리 | `Layout` |
+| 지도 렌더링 | `NaverMap` |
+
+```typescript
+// Layout.tsx — 데이터 fetch, 상태 보관
+const [boundaries, setBoundaries] = useState<District[]>([])
+
+useEffect(() => {
+  fetch('/api/vworld-boundaries').then(r => r.json()).then(setBoundaries)
+}, [])
+
+return <NaverMap boundaries={boundaries} showDistricts={show} />
+
+// NaverMap.tsx — 받은 데이터로 렌더링만
+useEffect(() => {
+  clearAllPolygons()
+  if (!showDistricts) return
+  boundaries.forEach(d => drawPolygon(d))
+}, [boundaries, showDistricts])
+```
+
+**결과**: 상태 흐름이 단방향으로 정리됐고, 토글/필터 버그가 눈에 띄게 줄었다.
+
+---
+
+## 전체 인사이트
+
+지도 기반 서비스를 만들면서 얻은 것들:
+
+**1. 데이터보다 렌더링 구조가 먼저다**
+GeoJSON이 있어도 렌더링 흐름이 꼬이면 데이터가 올바르게 있어도 버그가 난다.
+
+**2. 기능 추가보다 데이터 흐름 통제**
+필터 추가 → 색상 추가 → 토글 추가로 기능을 쌓았더니 버그가 쌓였다. 중간에 상태 흐름을 정리하는 리팩터링이 필요했다.
+
+**3. 이번 작업에서 실제로 배운 것들**
+- GeoJSON을 실제 서비스 데이터(시군구 병합)로 가공하는 과정
+- 지도 기반 UI에서의 상태 관리 패턴 (`useRef` + `useEffect` 조합)
+- 성능 vs 정확도 트레이드오프 (좌표 단순화 128 포인트)
+- `deterministic hash` 기반 색상 생성
+
+---
+
+## 수상 성과
+
+쓰리봇 프로젝트는 하드웨어 제어(STM32)부터 백엔드 인프라(FastAPI + PostgreSQL), 그리고 이 웹앱까지 — 시스템 전체를 직접 구현했다. 그 결과를 여러 대회에서 검증받았다.
+
+![쓰리봇 수상 실적 — 기후테크 최우수상 등 8개 수상](/images/threebot-web/portfolio-p128.png)
+
+| 대회 | 수상 | 주최 | 날짜 |
+|------|------|------|------|
+| 2025 기후테크 아이디어 경진대회 | **최우수상** | 지식재산전문인력양성사업단 | 2025.11.25 |
+| KNU-UP 학생 창업아이템 시제품 제작 경진대회 | **최우수상** | 지산학연협력기술연구소 | 2025.12.18 |
+| KNU-E 창업역량 강화캠프 | **최우수상** | 경북대학교 산학협력단 | 2025.09.12 |
+| 제5회 SDGs 소셜벤처 챔피언십 | **은상** | 한국지속가능소셜벤처협회 | 2025.11.06 |
+| 2025 창업 경진대회 | **우수상** | 안동형일자리사업단 | 2025.11.07 |
+| 2025 미래한국 아이디어 공모전 | **우수상** | 기획재정부 | 2025.11.13 |
+| ICT분야 지식재산 아이디어 경진대회 | **우수상** | 한국정보시스템학회 | 2025.10.25 |
+| 2025 CBC KOREA 창업경진대회 | **장려** | CBC KOREA | 2025.11.10 |
+| 캡스톤디자인 온라인 경진대회 | **장려** | 한국환경기술학회 | 2025.11.28 |
+
+### 각 대회에서 강조한 기술 포인트
+
+대회 성격마다 같은 프로젝트를 다르게 설명했다.
+
+- **기술형**: STM32 기반 모터 제어, ALM 센서 원점복귀, 비상정지 로직, 시제품 검증
+- **창업형**: 조이스틱 텔레오퍼레이션, ROS2-임베디드 연동, 운영 시나리오, 유지보수성
+- **사회문제형**: 도시 침수 예방, 작업자 안전, 공공 인프라 자동화
+
+---
+
+_시리즈: [쓰리봇 — 빗물받이 관리](/series/threebot) · 이전: [백엔드 인프라 구축](/posts/threebot/backend-postgresql-docker) →_

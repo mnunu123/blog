@@ -1,0 +1,201 @@
+---
+title: "쇼츠 자동화 파이프라인 1단계 — 한국어 키워드로 도우인 영상 자동 수집하기"
+slug: "auto-rank-douyin-collection"
+series: "shorts-pipeline"
+seriesOrder: 1
+category: "project"
+createdAt: "2025-12-10"
+summary: "한국어 상품명을 입력하면 도우인(중국 TikTok)에서 인기 쇼츠를 자동으로 찾아 다운로드하는 파이프라인 1단계 구현기. Playwright 봇 우회부터 인기순 랭킹 알고리즘까지."
+tags: ["Python", "Playwright", "Automation"]
+thumbnail: "/thumbnails/shorts-pipeline/auto-rank-douyin-collection.png"
+githubUrl: "https://github.com/mnunu123/auto-rank"
+projectStatus: "completed"
+featured: false
+readingTime: 8
+---
+
+## 한 줄 요약
+
+> "여성용 여름 반팔" 한 줄만 입력하면, 도우인에서 인기 영상 1개를 자동으로 찾아 `.mp4`로 저장한다.
+
+---
+
+## 문제
+
+쇼핑몰 상품 영상을 만들 때 가장 많은 시간이 걸리는 건 **레퍼런스 영상 찾기**였다. 도우인(抖音, 중국 TikTok)에는 상품별 고품질 쇼츠가 넘쳐나지만, 직접 검색하려면:
+
+1. 한국어 키워드를 중국어로 번역해야 한다
+2. 도우인은 해외 IP를 차단한다
+3. 검색 결과를 직접 보고 "인기 있는 것"을 골라야 한다
+4. 다운로드는 또 다른 도구가 필요하다
+
+이 4단계를 자동화해 "키워드 하나 → 영상 파일 하나"로 만드는 게 목표였다.
+
+---
+
+## 접근
+
+### 전체 파이프라인
+
+```
+입력 (한국어)
+  → 키워드 번역 (Google Translate, 무료)
+  → 도우인 검색 (Playwright + Chrome)
+  → 필터링 (1분 미만)
+  → 랭킹 (조회수 > 좋아요 > 댓글 > 공유)
+  → yt-dlp 다운로드
+  → output/ 저장
+```
+
+### 도구 선택 이유
+
+| 도구 | 선택 이유 |
+|------|---------|
+| `Playwright` | JS 렌더링 필수, Chrome channel로 봇 감지 우회 |
+| `yt-dlp` | 도우인 워터마크 없는 원본 다운로드 지원 |
+| `deep-translator` | Google Translate 무료 사용, API 키 불필요 |
+| `BeautifulSoup4` | 파싱 간결한 API |
+
+---
+
+## 구현
+
+### 프로젝트 구조
+
+```
+app/
+  main.py                   # CLI 진입점
+  config.py                 # .env 기반 전역 설정
+  models/
+    video_candidate.py      # 영상 후보 데이터 모델
+  services/
+    keyword_translator.py   # 한→중 키워드 생성
+    douyin_search_service.py# 도우인 검색 (Playwright)
+    candidate_filter.py     # 길이 필터 (1분 미만)
+    candidate_ranker.py     # 인기순 랭킹
+    downloader_service.py   # yt-dlp 다운로드
+  utils/
+    time_parser.py          # "01:23" → 83초 파싱
+    slugify.py              # 파일명 slug 생성
+```
+
+### 실행 예시
+
+```bash
+# 기본 실행
+python app/main.py --item "여성용 여름 반팔"
+
+# 번역 키워드만 확인 (다운로드 없음)
+python app/main.py --item "고양이 장난감" --keyword-only
+
+# 중국 IP 프록시 지정
+python app/main.py --item "캠핑용 접이식 의자" --proxy http://127.0.0.1:7890
+
+# 도우인 URL 직접 다운로드
+python app/main.py --url "https://www.douyin.com/video/7123456789"
+```
+
+### 랭킹 알고리즘
+
+단순 조회수 정렬이 아니라 여러 지표를 가중치로 합산한다. 조회수가 높아도 좋아요나 댓글이 없으면 광고성 영상일 가능성이 높아서다:
+
+```python
+# app/services/candidate_ranker.py (발췌)
+def score(candidate: VideoCandidate) -> float:
+    """인기 지표 가중 합산. 조회수 > 좋아요 > 댓글 > 공유 순 가중치."""
+    return (
+        candidate.view_count   * 1.0 +
+        candidate.like_count   * 3.0 +
+        candidate.comment_count * 5.0 +
+        candidate.share_count  * 2.0
+    )
+```
+
+### 메타데이터 출력
+
+다운로드된 영상과 함께 `output/metadata/*.json`에 선택 근거가 저장된다:
+
+```json
+{
+  "input_keyword_ko": "여성용 여름 반팔",
+  "translated_keywords_zh": ["女性夏季短袖", "女装夏季短袖T恤"],
+  "selected_platform": "douyin",
+  "selected_video_url": "https://www.douyin.com/video/7123456789",
+  "selected_reason": "인기 지표 'likes' 기준 최고점 (score=45000)",
+  "duration_seconds": 45,
+  "downloaded_file_path": "output/downloads/nv-xia-ji-duan-xiu_20240101.mp4"
+}
+```
+
+---
+
+## 시행착오
+
+### 1. 도우인 봇 차단
+
+가장 큰 장벽이었다. `playwright.chromium.launch()`로 일반 Chromium을 쓰면 도우인이 즉시 차단한다.
+
+해결책: **Chrome channel 사용** + 적절한 User-Agent 설정
+
+```python
+# app/services/douyin_search_service.py (발췌)
+browser = await p.chromium.launch(
+    channel="chrome",        # 일반 Chromium → Chrome으로 교체
+    headless=True,
+)
+```
+
+Chrome(설치된 실제 Chrome)을 쓰면 봇 시그니처가 달라져 차단률이 크게 낮아졌다.
+
+### 2. 해외 IP 차단
+
+도우인은 중국 내 서비스라 해외 IP에서는 접근 자체가 차단된다. 프록시 없이는 테스트도 불가능하다.
+
+해결책: `.env`에 `HTTP_PROXY` 설정 또는 실행 시 `--proxy` 옵션으로 중국 IP 프록시 경유.
+
+```bash
+# .env
+HTTP_PROXY=http://your-china-proxy:port
+```
+
+이 제약은 README에 ⚠️로 명시했다. 프록시 없는 환경에서는 동작 보장이 안 된다.
+
+### 3. 영상 길이 파싱
+
+도우인 검색 결과의 영상 길이는 `"01:23"`, `"45"`, `"1:02:15"` 등 형식이 일관되지 않았다. 전용 파서를 만들어 처리:
+
+```python
+# app/utils/time_parser.py (발췌)
+def parse_duration(text: str) -> int:
+    """'01:23' → 83, '45' → 45, '1:02:15' → 3735"""
+    parts = text.strip().split(":")
+    if len(parts) == 1:
+        return int(parts[0])
+    elif len(parts) == 2:
+        return int(parts[0]) * 60 + int(parts[1])
+    else:
+        return int(parts[0]) * 3600 + int(parts[1]) * 60 + int(parts[2])
+```
+
+---
+
+## 결과
+
+- `python app/main.py --item "여성용 여름 반팔"` 실행 → 약 30~60초 내 `.mp4` 다운로드 완료
+- 메타데이터 JSON으로 선택 근거 추적 가능
+- `--keyword-only` 옵션으로 번역 키워드만 빠르게 확인 가능
+
+---
+
+## 다음 단계 (미구현)
+
+이 파이프라인은 **1단계(수집)** 만 완성된 상태다. README에 확장 포인트가 명시되어 있다:
+
+- [ ] **2단계**: 자막/음성 스크립트 추출 (`ScriptExtractorService`)
+- [ ] **3단계**: 한국어 자막 합성 (`VideoEditorService`)
+- [ ] **4단계**: YouTube Shorts 자동 업로드 (`YouTubeUploaderService`)
+- [ ] TikTok, YouTube Shorts 검색 지원 (동일 인터페이스)
+
+---
+
+_시리즈: [쇼츠 자동화 파이프라인](/series/shorts-pipeline) · 1/2편_

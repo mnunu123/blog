@@ -1,65 +1,222 @@
-import Image from "next/image";
+// 홈 페이지 — Nat Eliason 스타일: 프로필 2단 인트로 + 텍스트 포스트 목록
+import Link from 'next/link'
+import Image from 'next/image'
+import { getAllPosts } from '@/lib/posts'
+import { getAllSeries } from '@/lib/taxonomy'
+import MagneticDock from '@/components/MagneticDock'
+import SeriesCategoryList from '@/components/SeriesCategoryList'
 
-export default function Home() {
+export default function HomePage() {
+  const posts = getAllPosts()
+  const series = getAllSeries()
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
+    <div style={{ maxWidth: '960px', margin: '0 auto', padding: '4rem 1.5rem 0' }}>
+
+      {/* ── 인트로: 텍스트 왼쪽 + 프로필 사진 오른쪽 ── */}
+      <section
+        style={{
+          display: 'grid',
+          gridTemplateColumns: '1fr auto',
+          gap: '3rem',
+          alignItems: 'flex-start',
+          marginBottom: '4.5rem',
+        }}
+      >
+        <div>
+          <h1
+            style={{
+              fontFamily: 'var(--font-serif)',
+              fontSize: 'clamp(2rem, 5vw, 2.75rem)',
+              fontWeight: 700,
+              color: 'var(--text-primary)',
+              lineHeight: 1.2,
+              marginBottom: '1.25rem',
+              letterSpacing: '-0.02em',
+            }}
+          >
+            안녕하세요, 박세준입니다.
           </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+
+          <p
+            style={{
+              fontFamily: 'var(--font-serif)',
+              fontSize: '1.1rem',
+              color: 'var(--text-secondary)',
+              lineHeight: 1.8,
+              marginBottom: '0.9rem',
+            }}
+          >
+            AI 에이전트, 웹 개발, 영상 자동화, IoT를 직접 만들며 기록합니다.
           </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+
+          <p
+            style={{
+              fontFamily: 'var(--font-serif)',
+              fontSize: '1.1rem',
+              color: 'var(--text-secondary)',
+              lineHeight: 1.8,
+              marginBottom: '0.9rem',
+            }}
           >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+            Claude, Python, Next.js를 주로 씁니다. 만들고 부수고 배운 것들을 이 블로그에 정리합니다.
+          </p>
+
+          <MagneticDock />
         </div>
-      </main>
+
+        {/* 프로필 사진 */}
+        <div style={{ flexShrink: 0 }}>
+          <Image
+            src="/profile.jpg"
+            alt="박세준 프로필 사진"
+            width={200}
+            height={200}
+            style={{
+              borderRadius: '12px',
+              objectFit: 'cover',
+              display: 'block',
+            }}
+            priority
+          />
+        </div>
+      </section>
+
+      {/* ── 시리즈 목록 ── */}
+      <section style={{ marginBottom: '3rem' }}>
+        <p
+          style={{
+            fontFamily: 'var(--font-sans)',
+            fontSize: '0.78rem',
+            fontWeight: 600,
+            color: 'var(--text-muted)',
+            textTransform: 'uppercase',
+            letterSpacing: '0.08em',
+            marginBottom: '0.75rem',
+          }}
+        >
+          시리즈
+        </p>
+        <SeriesCategoryList series={series} />
+      </section>
+
+      {/* ── 포스트 목록 ── */}
+      <section>
+        <p
+          style={{
+            fontFamily: 'var(--font-sans)',
+            fontSize: '0.78rem',
+            fontWeight: 600,
+            color: 'var(--text-muted)',
+            textTransform: 'uppercase',
+            letterSpacing: '0.08em',
+            marginBottom: '0',
+          }}
+        >
+          전체 글 ({posts.length})
+        </p>
+
+        <div>
+          {posts.map((post, i) => {
+            const s = series.find(s => s.id === post.series)
+            return (
+              <article
+                key={post.fullSlug}
+                style={{
+                  padding: '1.5rem 0',
+                  borderBottom: i < posts.length - 1 ? '1px solid var(--border)' : 'none',
+                }}
+              >
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.6rem',
+                    marginBottom: '0.45rem',
+                    flexWrap: 'wrap',
+                  }}
+                >
+                  {s && (
+                    <Link
+                      href={`/series/${s.slug}`}
+                      style={{
+                        fontSize: '0.75rem',
+                        fontWeight: 700,
+                        color: s.color,
+                        textDecoration: 'none',
+                        fontFamily: 'var(--font-sans)',
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.05em',
+                      }}
+                    >
+                      {s.name}
+                    </Link>
+                  )}
+                  <span style={{ color: 'var(--border)' }}>·</span>
+                  <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)', fontFamily: 'var(--font-sans)' }}>
+                    {post.createdAt}
+                  </span>
+                  <span style={{ color: 'var(--border)' }}>·</span>
+                  <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)', fontFamily: 'var(--font-sans)' }}>
+                    {post.readingTime}분
+                  </span>
+                </div>
+
+                <Link href={`/posts/${post.seriesSlug}/${post.slug}`} style={{ textDecoration: 'none' }}>
+                  <h2
+                    style={{
+                      fontFamily: 'var(--font-serif)',
+                      fontSize: '1.25rem',
+                      fontWeight: 600,
+                      color: 'var(--text-primary)',
+                      lineHeight: 1.35,
+                      marginBottom: '0.5rem',
+                      letterSpacing: '-0.01em',
+                    }}
+                  >
+                    {post.title}
+                  </h2>
+                </Link>
+
+                <p
+                  style={{
+                    fontFamily: 'var(--font-sans)',
+                    fontSize: '0.95rem',
+                    color: 'var(--text-secondary)',
+                    lineHeight: 1.6,
+                    marginBottom: '0.75rem',
+                  }}
+                  className="line-clamp-2"
+                >
+                  {post.summary}
+                </p>
+
+                {post.tags.length > 0 && (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
+                    {post.tags.slice(0, 4).map(tag => (
+                      <Link
+                        key={tag}
+                        href={`/tags/${encodeURIComponent(tag)}`}
+                        style={{
+                          fontSize: '0.75rem',
+                          fontFamily: 'var(--font-sans)',
+                          color: 'var(--text-muted)',
+                          background: 'var(--border)',
+                          padding: '0.15rem 0.6rem',
+                          borderRadius: '4px',
+                          textDecoration: 'none',
+                        }}
+                      >
+                        {tag}
+                      </Link>
+                    ))}
+                  </div>
+                )}
+              </article>
+            )
+          })}
+        </div>
+      </section>
     </div>
-  );
+  )
 }
