@@ -20,7 +20,6 @@ const DEFAULT_SPRING_OPTIONS: SpringOptions = {
 export function ScrollProgress({ className, style, springOptions, containerRef }: ScrollProgressProps) {
   const { scrollYProgress } = useScroll({
     container: containerRef,
-    layoutEffect: containerRef?.current !== null,
   });
 
   const scaleX = useSpring(scrollYProgress, {
