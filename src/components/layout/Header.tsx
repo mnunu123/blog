@@ -1,6 +1,7 @@
-// 블로그 헤더 — Nat Eliason 스타일: 심플 텍스트 로고 + 우측 네비
+// 블로그 헤더 — 심플 텍스트 로고 + 우측 네비 (모바일: 햄버거 메뉴)
 'use client'
 
+import { useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { ScrollProgress } from '@/components/ui/ScrollProgress'
@@ -15,63 +16,66 @@ const NAV = [
 
 export default function Header() {
   const pathname = usePathname()
+  const [open, setOpen] = useState(false)
 
   return (
     <header
       style={{
-        borderBottom: '1px solid var(--border)',
+        borderBottom: open ? 'none' : '1px solid var(--border)',
         background: 'var(--bg)',
         position: 'sticky',
         top: 0,
         zIndex: 50,
       }}
     >
-      <div
-        style={{
-          maxWidth: '960px',
-          margin: '0 auto',
-          padding: '0 1.5rem',
-          height: '56px',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-        }}
-      >
-        <Link
-          href="/"
-          style={{
-            fontFamily: 'var(--font-serif)',
-            fontWeight: 700,
-            fontSize: '1.2rem',
-            color: 'var(--text-primary)',
-            textDecoration: 'none',
-            letterSpacing: '-0.01em',
-          }}
-        >
+      <div className="header-inner">
+        <Link href="/" className="header-logo">
           mnunu.dev
         </Link>
 
-        <nav style={{ display: 'flex', gap: '1.75rem' }}>
+        {/* 데스크탑 네비 */}
+        <nav className="header-nav-desktop">
           {NAV.map(({ label, href }) => (
             <Link
               key={href}
               href={href}
-              style={{
-                fontFamily: 'var(--font-sans)',
-                fontSize: '0.9rem',
-                fontWeight: pathname === href ? 600 : 400,
-                color: pathname === href ? 'var(--text-primary)' : 'var(--text-secondary)',
-                textDecoration: 'none',
-                transition: 'color 0.15s',
-              }}
+              className={pathname === href ? 'active' : ''}
             >
               {label}
             </Link>
           ))}
         </nav>
+
+        {/* 모바일 햄버거 버튼 */}
+        <button
+          className="header-hamburger"
+          onClick={() => setOpen(!open)}
+          aria-label="메뉴 열기"
+        >
+          {open ? '✕' : '☰'}
+        </button>
       </div>
 
-      {/* 스크롤 진행 바 — 헤더 하단에 고정 */}
+      {/* 모바일 드롭다운 메뉴 */}
+      {open && (
+        <nav
+          className="header-nav-mobile"
+          style={{ borderBottom: '1px solid var(--border)', background: 'var(--bg)' }}
+        >
+          {NAV.map(({ label, href }) => (
+            <Link
+              key={href}
+              href={href}
+              className={pathname === href ? 'active' : ''}
+              onClick={() => setOpen(false)}
+            >
+              {label}
+            </Link>
+          ))}
+        </nav>
+      )}
+
+      {/* 스크롤 진행 바 */}
       <ScrollProgress
         className="fixed h-[3px]"
         style={{ background: 'var(--accent)' } as React.CSSProperties}

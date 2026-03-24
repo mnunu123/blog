@@ -15,7 +15,7 @@ export default async function SearchPage({ searchParams }: Props) {
   const posts = getAllPosts()
 
   return (
-    <div style={{ maxWidth: '960px', margin: '0 auto', padding: '4rem 1.5rem 0' }}>
+    <div className="page-wrap">
       <h1 style={{ fontFamily: 'var(--font-serif)', fontSize: '2.2rem', fontWeight: 700, letterSpacing: '-0.02em', marginBottom: '2rem' }}>검색</h1>
       <Suspense>
         <SearchClient posts={posts} initialQuery={q ?? ''} />

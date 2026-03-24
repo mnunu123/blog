@@ -10,7 +10,7 @@ export default function SeriesListPage() {
   const series = getAllSeries()
 
   return (
-    <div style={{ maxWidth: '960px', margin: '0 auto', padding: '4rem 1.5rem 0' }}>
+    <div className="page-wrap">
       <h1
         style={{
           fontFamily: 'var(--font-serif)',

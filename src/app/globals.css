@@ -144,6 +144,135 @@ body {
 .prose hr { border: none; border-top: 1px solid var(--border); margin: 2.5em 0; }
 .prose img { border-radius: 10px; max-width: 100%; margin: 1.5em auto; display: block; }
 
+/* ── 반응형 레이아웃 ── */
+.page-wrap {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 4rem 1.5rem 0;
+}
+
+.intro-grid {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 3rem;
+  align-items: flex-start;
+  margin-bottom: 4.5rem;
+}
+
+/* 헤더 */
+.header-inner {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 0 1.5rem;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.header-logo {
+  font-family: var(--font-serif);
+  font-weight: 700;
+  font-size: 1.2rem;
+  color: var(--text-primary);
+  text-decoration: none;
+  letter-spacing: -0.01em;
+  flex-shrink: 0;
+}
+
+.header-nav-desktop {
+  display: flex;
+  gap: 1.75rem;
+}
+
+.header-nav-desktop a {
+  font-family: var(--font-sans);
+  font-size: 0.9rem;
+  font-weight: 400;
+  color: var(--text-secondary);
+  text-decoration: none;
+  transition: color 0.15s;
+}
+
+.header-nav-desktop a.active {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.header-hamburger {
+  display: none;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 1.4rem;
+  color: var(--text-primary);
+  padding: 0.25rem 0.4rem;
+  line-height: 1;
+}
+
+.header-nav-mobile {
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--border);
+  padding: 0.5rem 1rem 0.75rem;
+}
+
+.header-nav-mobile a {
+  font-family: var(--font-sans);
+  font-size: 1rem;
+  color: var(--text-secondary);
+  text-decoration: none;
+  padding: 0.7rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.header-nav-mobile a:last-child {
+  border-bottom: none;
+}
+
+.header-nav-mobile a.active {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+@media (max-width: 640px) {
+  .page-wrap {
+    padding: 2rem 1rem 0;
+  }
+
+  .intro-grid {
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+  }
+
+  .intro-grid-image {
+    width: 100px !important;
+    height: 100px !important;
+  }
+
+  .header-inner {
+    padding: 0 1rem;
+  }
+
+  .header-nav-desktop {
+    display: none;
+  }
+
+  .header-hamburger {
+    display: block;
+  }
+
+  .prose {
+    font-size: 1rem;
+  }
+
+  .prose pre {
+    padding: 1em 1.1em;
+    font-size: 0.82rem;
+    border-radius: 8px;
+  }
+}
+
 /* ── 유틸리티 ── */
 .line-clamp-2 {
   display: -webkit-box;

@@ -28,7 +28,7 @@ export default async function SeriesDetailPage({ params }: Params) {
   const posts = getPostsBySeries(seriesId)
 
   return (
-    <div style={{ maxWidth: '960px', margin: '0 auto', padding: '4rem 1.5rem 0' }}>
+    <div className="page-wrap">
       {/* 시리즈 헤더 */}
       <div style={{ marginBottom: '3rem' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.75rem' }}>

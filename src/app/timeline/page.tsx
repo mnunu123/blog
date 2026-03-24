@@ -139,7 +139,7 @@ const data = [
 
 export default function TimelinePage() {
   return (
-    <div style={{ maxWidth: '960px', margin: '0 auto', padding: '4rem 1.5rem 0' }}>
+    <div className="page-wrap">
       {/* 헤더 */}
       <div style={{ marginBottom: '3rem' }}>
         <h1 style={{

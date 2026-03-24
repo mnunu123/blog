@@ -26,7 +26,7 @@ export default async function TagPage({ params }: Params) {
   if (posts.length === 0) notFound()
 
   return (
-    <div style={{ maxWidth: '960px', margin: '0 auto', padding: '4rem 1.5rem 0' }}>
+    <div className="page-wrap">
       <p style={{ fontFamily: 'var(--font-sans)', fontSize: '0.8rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.5rem' }}>태그</p>
       <h1 style={{ fontFamily: 'var(--font-serif)', fontSize: '2.2rem', fontWeight: 700, letterSpacing: '-0.02em', marginBottom: '2.5rem' }}>
         #{decoded}

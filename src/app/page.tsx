@@ -11,18 +11,10 @@ export default function HomePage() {
   const series = getAllSeries()
 
   return (
-    <div style={{ maxWidth: '960px', margin: '0 auto', padding: '4rem 1.5rem 0' }}>
+    <div className="page-wrap">
 
       {/* ── 인트로: 텍스트 왼쪽 + 프로필 사진 오른쪽 ── */}
-      <section
-        style={{
-          display: 'grid',
-          gridTemplateColumns: '1fr auto',
-          gap: '3rem',
-          alignItems: 'flex-start',
-          marginBottom: '4.5rem',
-        }}
-      >
+      <section className="intro-grid">
         <div>
           <h1
             style={{
@@ -66,7 +58,7 @@ export default function HomePage() {
         </div>
 
         {/* 프로필 사진 */}
-        <div style={{ flexShrink: 0 }}>
+        <div style={{ flexShrink: 0 }} className="intro-grid-image">
           <Image
             src="/profile.jpg"
             alt="박세준 프로필 사진"
