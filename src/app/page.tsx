@@ -39,7 +39,7 @@ export default function HomePage() {
               marginBottom: '0.9rem',
             }}
           >
-            AI 에이전트, 웹 개발, 영상 자동화, IoT를 직접 만들며 기록합니다.
+            생각을 시스템으로 바꾸는 엔지니어입니다.
           </p>
 
           <p
@@ -51,7 +51,20 @@ export default function HomePage() {
               marginBottom: '0.9rem',
             }}
           >
-            Claude, Python, Next.js를 주로 씁니다. 만들고 부수고 배운 것들을 이 블로그에 정리합니다.
+            AI 에이전트, 자동화, 로보틱스를 직접 만들고,<br />
+            아이디어를 실제로 작동하는 형태까지 구현합니다.
+          </p>
+
+          <p
+            style={{
+              fontFamily: 'var(--font-serif)',
+              fontSize: '1.1rem',
+              color: 'var(--text-secondary)',
+              lineHeight: 1.8,
+              marginBottom: '0.9rem',
+            }}
+          >
+            Claude, Python, Next.js를 주로 씁니다. 만들고 부수고 배운 것들을 정리하고 제가 만든 것, 실패한 것, 그리고 배운 것들을 기록합니다.
           </p>
 
           <MagneticDock />
