@@ -58,7 +58,7 @@ function parsePost(seriesSlug: string, filename: string): PostMeta {
   }
 }
 
-// 전체 포스트 목록 (날짜 내림차순)
+// 전체 포스트 목록 (날짜 오름차순)
 export function getAllPosts(): PostMeta[] {
   if (!fs.existsSync(POSTS_DIR)) return []
   const seriesDirs = fs.readdirSync(POSTS_DIR)
@@ -77,7 +77,7 @@ export function getAllPosts(): PostMeta[] {
     }
   }
 
-  return posts.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
+  return posts.sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1))
 }
 
 // 시리즈 내 포스트 (seriesOrder 오름차순)
