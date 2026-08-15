@@ -10,7 +10,8 @@
       "description": "Claude, Gemini 등 LLM 기반 멀티에이전트 시스템으로 콘텐츠를 자동 생성하는 프로젝트 시리즈",
       "color": "#6366f1",
       "posts": [
-        "landing-page-generator-overview"
+        "landing-page-generator-overview",
+        "landing-page-generator-ab-testing"
       ]
     },
     {
@@ -55,6 +56,16 @@
       "color": "#14b8a6",
       "posts": [
         "inmoov-architecture-overview"
+      ]
+    },
+    {
+      "id": "portfolio-maker",
+      "name": "포트폴리오 메이커",
+      "slug": "portfolio-maker",
+      "description": "토스·당근·빗썸·네이버·카카오 등 원하는 회사 무드를 골라 포트폴리오를 대신 만들어주는 SaaS 랜딩페이지",
+      "color": "#4B7BF5",
+      "posts": [
+        "overview"
       ]
     },
     {
@@ -104,11 +115,11 @@
 
   "tags": {
     "language": ["Python", "TypeScript", "JavaScript", "HTML", "Jupyter"],
-    "framework": ["Next.js", "React", "Playwright", "Zustand", "Vitest"],
-    "infra": ["Docker", "Microservices", "GitHub Actions"],
-    "ai": ["Claude API", "Gemini API", "LLM", "Multi-Agent", "Automation"],
+    "framework": ["Next.js", "React", "Playwright", "Zustand", "Vitest", "Tailwind CSS"],
+    "infra": ["Docker", "Microservices", "GitHub Actions", "Cloudflare Pages"],
+    "ai": ["Claude API", "Gemini API", "LLM", "Multi-Agent", "Automation", "GA4", "AB Testing"],
     "domain": ["IoT", "Maps", "Video", "PPT", "Landing Page", "Shorts", "Fintech", "Robotics"],
-    "tool": ["yt-dlp", "pptxgenjs", "Leaflet", "Naver Maps", "Recharts"]
+    "tool": ["yt-dlp", "pptxgenjs", "Leaflet", "Naver Maps", "Recharts", "Google Apps Script"]
   },
 
   "thumbnail_rules": {

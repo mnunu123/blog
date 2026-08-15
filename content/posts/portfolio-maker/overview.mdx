@@ -1,0 +1,174 @@
+---
+title: "포트폴리오 메이커 — 토스·당근·카카오 무드로 포트폴리오를 대신 만들어주는 SaaS 랜딩"
+slug: "overview"
+series: "portfolio-maker"
+seriesOrder: 1
+category: "project"
+createdAt: "2026-04-01"
+summary: "취준생이 자료만 보내면 토스·당근·빗썸·네이버·카카오 5가지 브랜드 무드 중 골라 포트폴리오를 대신 만들어주는 SaaS의 랜딩·템플릿 갤러리·문의 폼. 단일 소스 템플릿 데이터 구조, 프로젝트 전용 디자인 시스템 스킬, Google Apps Script 연동 트러블슈팅까지"
+tags: ["Next.js", "TypeScript", "Tailwind CSS", "Google Apps Script"]
+thumbnail: "/thumbnails/portfolio-maker/overview.png"
+githubUrl: "https://github.com/mnunu123/portfolio_website"
+siteUrl: "https://portfolio-website-six-zeta-95.vercel.app/"
+projectStatus: "in-progress"
+featured: true
+readingTime: 9
+---
+
+## 한 줄 요약
+
+> "경험은 다들 있는데, 정리가 안 돼 있다" — 자료를 보내면 원하는 회사 무드로 포트폴리오를 대신 만들어주는 서비스의 랜딩페이지.
+
+→ **[배포된 사이트 보기](https://portfolio-website-six-zeta-95.vercel.app/)**
+
+---
+
+## 문제
+
+취준생이 포트폴리오를 못 만드는 이유는 대개 "만들 콘텐츠가 없어서"가 아니라 **정리가 안 돼서**다. 카톡, GPT 대화, 노션, 블로그에 흩어진 경험은 이미 있는데, 회사마다 강조 포인트가 달라서 매번 다시 짜야 하고, 무엇을 남기고 무엇을 뺄지 판단하는 데 가장 많은 시간이 든다.
+
+이 서비스는 그 정리 과정을 대신해준다. 사용자는 흩어진 자료를 보내고 원하는 회사 무드(토스/당근/빗썸/네이버/카카오)를 고르기만 하면 된다.
+
+![포트폴리오 메이커 랜딩페이지 — Hero부터 WhyUs 섹션까지](/images/portfolio-maker/home-hero.png)
+
+*그림 1: "회사 스타일을 고르면 그 무드에 맞춰 제작합니다"를 첫 문장으로 내세운 랜딩 히어로.*
+
+---
+
+## 접근 — 무드 5개, 데이터는 하나의 소스에서
+
+### 기술 스택
+
+Next.js 15 (App Router) + TypeScript + Tailwind CSS. 별도 백엔드 없이 랜딩·템플릿 갤러리·문의 폼만으로 구성된 가벼운 구조다.
+
+### 템플릿 데이터 단일 소스화
+
+토스·당근·빗썸·네이버·카카오 5개 무드 각각의 이름, 한 줄 소개, 타겟 직군, 강조 컬러를 `lib/template-data.ts` 하나에 모아두고, 카드 목록(`/templates`)과 상세 페이지(`/templates/[slug]`) 양쪽이 이 파일만 참조한다.
+
+```typescript
+// lib/template-data.ts
+export const templates: Template[] = [
+  {
+    slug: 'toss',
+    name: '토스 스타일',
+    oneLine: '군더더기 없이 명확한, 핀테크 미니멀',
+    moodKeywords: ['미니멀', '명확함', '모던', '핀테크', '프로페셔널'],
+    targetUser: '개발자, 기획자, 데이터 직군 취준생',
+    accentColor: '#4B7BF5',
+    previewStyle: 'clean',
+    emoji: '💙',
+  },
+  // daangn, bithumb, naver, kakao ...
+];
+```
+
+새 무드를 추가할 때 이 배열에 객체 하나만 더하면 카드·상세 페이지에 자동으로 반영된다 — `CLAUDE.md`에도 "새 템플릿 추가 시 이 파일만 수정하면 됨"이라고 명시해뒀다.
+
+![템플릿 갤러리 — 5가지 회사 무드 선택 화면](/images/portfolio-maker/templates.png)
+
+*그림 2: `/templates`. 버튼 5개가 전부 `template-data.ts` 배열을 순회해서 그려진다.*
+
+![토스 무드 템플릿 상세 페이지 — 샘플 섹션과 사이드바](/images/portfolio-maker/template-toss.png)
+
+*그림 3: `/templates/toss`. About/Projects/Experience 샘플 섹션과 "다른 템플릿" 사이드바 내비게이션.*
+
+### 프로젝트 전용 Claude Code 스킬 3개
+
+디자인 일관성과 UI 품질을 매번 사람이 눈으로 검토하는 대신, `.claude/skills/`에 이 프로젝트 전용 스킬을 만들어뒀다.
+
+| 스킬 | 역할 |
+|------|------|
+| `pastel-brand-system` | 색상·radius·shadow 등 파스텔 디자인 토큰 규칙 |
+| `template-gallery-builder` | 템플릿 카드·상세 구조 변경 시 참고하는 콘텐츠 모델 |
+| `ui-polish-review` | spacing·명암비·hover/focus·모바일 깨짐을 체크리스트로 점검 |
+
+```markdown
+<!-- .claude/skills/ui-polish-review/SKILL.md -->
+## 핵심 관점
+- Spacing: 일관된 padding/gap, 모바일 여백
+- Contrast: 텍스트 vs 배경 WCAG AA (4.5:1) 이상
+- CTA: 가장 중요한 버튼이 시각적으로 가장 두드러지는가
+- Focus: 키보드 탐색 시 focus ring 보이는가
+```
+
+새 컴포넌트를 만들 때마다 색상값을 하나하나 다시 정하는 대신, 이 스킬을 참조하게 만들어서 "이번엔 이 파란색, 저번엔 저 파란색" 같은 드리프트를 줄였다.
+
+---
+
+## 구현 — 하루 만에 쌓은 설득 구조
+
+초기 커밋(`Initial commit: portfolio maker SaaS site`) 다음 날, 랜딩페이지에 설득 섹션을 순서대로 쌓았다. 커밋 로그를 그대로 옮기면:
+
+```
+feat: add WHY US persuasion section below Hero
+feat: add Pain Point empathy section below WhyUs
+feat: add Transformation before/after comparison section
+feat: add Trust section below Transformation
+feat: add Ready conversion section before final CTA
+copy: update card1 body in WhyUsSection
+copy: update trust card3 title and body
+copy: add line break in PainPointSection body text
+```
+
+Hero → WhyUs(왜 우리인가) → PainPoint(공감) → Transformation(Before/After) → Trust(신뢰) → Ready(전환 유도) → CTA 순서로, 방문자가 "나도 이 문제 있는데" → "이 서비스는 다르구나" → "지금 신청해볼까"로 넘어가도록 섹션을 단계적으로 배치했다. 구조를 다 잡은 뒤에는 섹션 단위 카피 미세조정 커밋이 이어졌다 — 문장 하나, 줄바꿈 위치 하나까지 별도 커밋으로 남겼다.
+
+### 문의 폼 → Google Apps Script 연동
+
+`/request` 페이지에서 이름·이메일·희망 템플릿·목표 직군·메시지를 받아 Google Apps Script 웹앱으로 전달한다. 별도 DB 없이 스프레드시트로 문의를 받는 가장 가벼운 구조를 택했다.
+
+![포트폴리오 제작 문의 폼](/images/portfolio-maker/request.png)
+
+*그림 4: `/request`. 제출 성공/실패 상태를 클라이언트에서 바로 보여준다.*
+
+```typescript
+// app/api/contact/route.ts — 서버 라우트가 Apps Script URL을 감싼다
+export async function POST(req: NextRequest) {
+  const scriptUrl = process.env.GOOGLE_SCRIPT_URL;
+  // ...
+  await fetch(scriptUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, email, template, role, message }),
+    redirect: 'follow',
+  });
+  // Apps Script 응답 상태와 무관하게 요청이 전달됐으면 성공으로 처리
+  return NextResponse.json({ success: true });
+}
+```
+
+---
+
+## 시행착오 — Apps Script는 "성공"을 fetch가 이해하는 방식으로 알려주지 않는다
+
+문의 폼 하나 연결하는 데 커밋 4개가 들었다. 순서대로:
+
+1. **`refactor: call Apps Script directly from client using NEXT_PUBLIC env var`** — 처음엔 클라이언트에서 Apps Script URL로 바로 요청했다.
+2. **`fix: route form through server API with GOOGLE_SCRIPT_URL env var`** — Apps Script URL이 브라우저에 그대로 노출되는 게 마음에 걸려서, 서버 API 라우트(`/api/contact`) 뒤로 옮기고 URL도 `NEXT_PUBLIC_*`(클라이언트 노출)에서 서버 전용 환경변수로 바꿨다.
+3. **`fix: relax Apps Script response check to handle 302 redirect`** — Apps Script 웹앱은 실행 후 302로 리다이렉트하는데, `fetch`의 기본 `res.ok` 체크가 이걸 실패로 오인했다.
+4. **`fix: treat any Apps Script fetch response as success, only fail on network error`** — 결국 Apps Script의 HTTP 상태 코드 자체를 신뢰하지 않기로 했다. 네트워크 요청이 오류 없이 나갔으면 성공으로 처리하고, 실제 실패 여부는 스프레드시트에 행이 쌓이는지로 확인하는 쪽을 택했다.
+
+<Callout type="insight">
+Google Apps Script 웹앱은 REST API가 아니다. 리다이렉트와 애매한 상태 코드를 돌려주는 걸 전제로, "요청이 나갔다"와 "서버가 200을 줬다"를 다르게 취급해야 한다.
+</Callout>
+
+---
+
+## 결과
+
+- Vercel에 실제 배포되어 접근 가능: [portfolio-website-six-zeta-95.vercel.app](https://portfolio-website-six-zeta-95.vercel.app/)
+- 랜딩(Hero~CTA 6섹션) → 템플릿 갤러리(5개 무드) → 템플릿 상세 → 문의 폼까지 4개 라우트가 실제로 연결되어 동작
+- 문의 폼 제출이 Google Apps Script를 거쳐 실제로 저장되는 것까지 확인
+- 디자인 토큰·컴포넌트 규칙·UI 점검을 프로젝트 전용 Claude Code 스킬 3개로 구조화
+
+---
+
+## 다음 단계
+
+- [ ] 토스 외 나머지 4개 무드(당근/빗썸/네이버/카카오) 상세 페이지 콘텐츠 보강
+- [ ] 실제 제작 사례를 Trust 섹션에 추가 (현재는 카피만 있고 실제 후기/사례 없음)
+- [ ] 문의 접수 후 자동 회신 메일 연동
+- [ ] `/templates` 목록 페이지에 카드형 미리보기 추가 (현재는 로고 버튼 5개만 노출)
+
+---
+
+_시리즈: [포트폴리오 메이커](/series/portfolio-maker)_
