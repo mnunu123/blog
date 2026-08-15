@@ -1,0 +1,278 @@
+---
+title: "Spendable — KB국민은행 AI 공모전 '미래준비' 탭 프로토타입 만들기"
+slug: "overview"
+series: "spendable"
+seriesOrder: 1
+category: "project"
+createdAt: "2026-08-03"
+summary: "설문 5문항으로 소비 성향을 점수화하고, 은퇴 시점 자산을 시뮬레이션하고, '이거 사도 될까?'를 판단해주는 KB스타뱅킹 '미래준비' 탭 프로토타입. Next.js + Zustand로 core/state/ui를 분리하고, 실 API 붙이기 전까지는 어댑터로 막아둔 구조를 기록한다."
+tags: ["Next.js", "TypeScript", "Zustand", "Vitest", "Fintech"]
+thumbnail: "/thumbnails/spendable/overview.png"
+githubUrl: "https://github.com/mnunu123/KB_AI_project"
+projectStatus: "in-progress"
+featured: true
+readingTime: 11
+---
+
+## 한 줄 요약
+
+> "지금 이거 사도 될까?"에 미래의 내 생활비로 답해주는 KB스타뱅킹 '미래준비' 탭 프로토타입.
+
+---
+
+## 문제
+
+KB국민은행 AI 공모전에 출품한 프로젝트다. 주제는 "미래준비" — 사람들이 은퇴 후를 막연하게만 걱정하고 구체적으로 계획하지 않는다는 문제에서 출발했다.
+
+기존 은행 앱의 자산 화면은 "지금 얼마 있는지"만 보여준다. "이 돈을 지금 써도 되는지", "이대로 살면 몇 살에 은퇴해서 한 달에 얼마로 살게 되는지"는 답해주지 않는다. 이 프로토타입은 KB스타뱅킹 안에 들어갈 하나의 탭이라는 전제로, 설문 몇 개와 더미 자산 데이터만으로 이 질문에 답하는 화면들을 구현했다.
+
+---
+
+## 접근 — 화면 구성과 아키텍처 원칙
+
+### 핵심 화면 6개
+
+| 화면 | 경로 | 역할 |
+|------|------|------|
+| 설문 온보딩 | `/survey/*` | 나이·소득·소비 성향·은퇴 희망 나이·인생 계획(결혼/차/주거) 수집 |
+| 미래준비 홈 | `/home` | 이번 달 여유자금, AI 상담 진입, 다가오는 돈 일정 요약 |
+| 미래의 나 | `/future-me` | 은퇴 후 내 모습을 캐릭터 애니메이션으로 보여주고 예상 생활비 제시 |
+| AI 금융상담 | `/ask` | 소비·저축·계획을 물어보는 채팅 (현재는 데모 응답) |
+| 다가오는 돈 일정 | `/twelve-months` | 12개월 롤링 창에 확정 일정·반복 패턴·혜택을 표시 |
+| 먼 미래의 나 | `/plans/far-future` | 결혼·차량·주거 계획을 인생 타임라인으로 재구성 |
+
+![설문 온보딩 화면 — "미래를 준비할 시간이에요"](/images/spendable/survey-intro.png)
+
+*그림 1: 설문 시작 화면. 노후를 막연하게 걱정하는 상태를 시각적으로 먼저 보여준 뒤 설문으로 들어간다.*
+
+### 왜 이렇게 폴더를 나눴는가
+
+`CLAUDE.md`에 폴더별 규칙을 박아뒀다.
+
+```
+src/core       — 순수 계산/도메인 로직 (React import 금지)
+src/state      — Zustand 스토어. 상태 변경은 반드시 store의 action을 통해서만
+src/components — UI 전용. 계산 로직을 만들지 않고 core/state를 호출만
+src/data       — 더미 데이터, 설문 문항 설정, 실 API 교체용 어댑터
+```
+
+이 프로젝트는 "확정된 금융 조언"이 아니라 프로토타입이다. 그래서 설계 목표를 하나로 좁혔다 — **나중에 실제 마이데이터·Gemini API로 바꿀 때 UI와 계산 로직은 그대로 두고 어댑터 내부만 갈아끼울 수 있게 만드는 것.**
+
+```typescript
+// src/data/adapters/financeDataAdapter.ts
+// 추후 실제 마이데이터 API로 교체할 어댑터 인터페이스.
+// 지금은 더미 스냅샷을 반환하지만, 호출부는 이 함수만 바라보므로
+// 나중에 내부 구현만 fetch 기반으로 바꾸면 된다.
+export async function getFinanceSnapshot(): Promise<FinanceSnapshot> {
+  return DUMMY_FINANCE_SNAPSHOT;
+}
+```
+
+AI 채팅도 같은 패턴이다.
+
+```typescript
+// src/core/mockChatAdapter.ts
+// Gemini API 연결 전까지 쓰는 데모 응답 어댑터.
+// 나중에 실제 API를 붙일 땐 getMockChatReply() 내부 구현만 실제 호출로 바꾸면 된다.
+export async function getMockChatReply(userMessage: string): Promise<string> {
+  const delay = 500 + Math.random() * 400;
+  await new Promise((resolve) => setTimeout(resolve, delay));
+  return QUICK_PROMPT_REPLIES[userMessage.trim()] ?? DEFAULT_REPLY;
+}
+```
+
+채팅 화면에도 "UI 데모" 배지를 그대로 붙여놨다. 실제로 은행 데이터를 이해하고 답하는 게 아니라 화면 흐름을 검증하는 단계라는 걸 숨기지 않았다.
+
+![AI 금융상담 채팅 — 데모 배지가 붙은 화면](/images/spendable/ask-chat.png)
+
+*그림 2: "UI 데모" 배지. 실제 Gemini 연동 전이라는 걸 화면에서부터 명시한다.*
+
+---
+
+## 구현
+
+### 1. 설문 점수화 — 5문항으로 재무 상태 0~2단계 분류
+
+Q2(소비 성향)와 Q3(여유자금 체감)에 가중치를 다르게 줘서 하나의 점수로 합산한다.
+
+```typescript
+// src/core/surveyScoring.ts
+export function scoreSurvey(answers: SurveyAnswers): FutureSelfProfile {
+  const q3Score = answers.q3 ? Q3_SCORE[answers.q3] : 1;
+  const q2Score = answers.q2.choice ? Q2_SCORE[answers.q2.choice] : 1;
+  const total = q3Score * 2 + q2Score;
+
+  const state: FinancialState = total <= HARDSHIP_MAX ? 0 : total <= NORMAL_MAX ? 1 : 2;
+  const promiseMessage = answers.q4 ? PRIORITY_PROMISE[answers.q4] : PRIORITY_PROMISE.emergency_fund;
+
+  return { state, promiseMessage };
+}
+```
+
+이 `state`(0: 힘듦 / 1: 보통 / 2: 여유)가 '미래의 나' 화면의 캐릭터 표정과 배경(scene SVG)을 결정한다. 여유자금 체감이 실제 소비 성향보다 신호로서 더 세다고 판단해서 2배 가중치를 줬다.
+
+### 2. 구매 판단 — "이거 사도 될까?"
+
+이 프로젝트의 핵심 기능이다. 결제 방식(일시불/3개월 할부/다음 달 결제)에 따라 이번 달 실제로 빠져나가는 금액을 계산하고, 그 결과로 남는 여유자금 비율로 안전/주의/위험을 판정한다.
+
+```typescript
+// src/core/calculations.ts
+export function judgeStatus(beforeFree: number, afterFree: number): PurchaseStatus {
+  const ratio = beforeFree > 0 ? afterFree / beforeFree : 0;
+  if (ratio < PURCHASE_DANGER_RATIO) return "danger";
+  if (ratio < PURCHASE_CAUTION_RATIO) return "caution";
+  return "safe";
+}
+```
+
+단순히 "위험해요"로 끝내지 않고, 대안 3개(다음 달 구매/3개월 할부/예산 낮추기)를 항상 같이 계산해서 보여준다. "안 된다"가 아니라 "이렇게 하면 된다"는 톤을 계산 결과 단계에서부터 만들어둔 것.
+
+### 3. 은퇴 자산 프로젝션 엔진
+
+가장 손이 많이 간 부분이다. 현재 자산(예금+증권)을 명목 수익률로 복리 성장시키고, 매달 저축액도 같이 적립식으로 굴린 뒤, 인플레이션율로 할인해서 "은퇴 시점의 현재가치 자산"을 구한다. 여기에 결혼·차량·주거 계획 비용을 빼고, 은퇴 후 예상 수명까지 나눠서 월 생활비를 뽑는다.
+
+```typescript
+// src/core/retirementProjection.ts
+// 확정된 금융 조언이 아니라 프로토타입 추정값이다.
+// 부동산은 이번 단계에서 별도 상승률을 적용하지 않고 현재가치를 그대로 이월한다(TODO).
+export function calculateRetirementProjection(input, context) {
+  const futureValueOfCurrentAssets = currentFinancialAssets * Math.pow(1 + input.annualNominalReturnRate, yearsUntilRetirement);
+  const futureValueOfMonthlySavings = monthlyContribution *
+    ((Math.pow(1 + monthlyReturnRate, monthsUntilRetirement) - 1) / monthlyReturnRate);
+  const realFutureFinancialAssets =
+    (futureValueOfCurrentAssets + futureValueOfMonthlySavings) / Math.pow(1 + input.annualInflationRate, yearsUntilRetirement);
+  // ...
+}
+```
+
+계산 자체보다 신경 쓴 건 **"계산이 안 될 때 뭐라고 보여줄지"** 였다. 필수 입력(현재 나이·월 소득·저축률·희망 은퇴 나이) 중 하나라도 없으면 계산을 강제로 진행하지 않고 `missing_data` 상태로 응답하게 만들었다. 희망 은퇴 나이가 현재 나이보다 어리면 `invalid_age`로 따로 구분한다. 화면은 이 상태값만 보고 분기하면 되고, "왜 계산이 안 됐는지"는 core 쪽 판단이라는 원칙을 지켰다.
+
+![미래의 나 — 은퇴 후 생활비 예측과 스프라이트 캐릭터](/images/spendable/future-me.png)
+
+*그림 3: 설문에 입력한 나이·소득·저축률·은퇴 나이를 기준으로 "65세 이후 월 약 198만원" 같은 구체적 숫자를 보여준다.*
+
+### 4. 캐릭터 애니메이션 — manifest 기반 스프라이트 재생
+
+'미래의 나' 화면의 곰 캐릭터는 Rive 같은 무거운 런타임 대신, 좌표 정보(`manifest.json`)와 스프라이트 시트 PNG 한 장으로 직접 애니메이션을 재생한다.
+
+```typescript
+// src/core/spriteAnimation.ts
+export function createAnimator(anim: SpriteAnimation) {
+  let frameIndex = 0;
+  let elapsedMs = 0;
+  return {
+    update(dtMs: number) {
+      elapsedMs += dtMs;
+      while (elapsedMs >= anim.durationsMs[frameIndex]) {
+        elapsedMs -= anim.durationsMs[frameIndex];
+        frameIndex = (frameIndex + 1) % anim.frameCount;
+      }
+    },
+    draw(ctx, dx, dy, dw, dh) {
+      const r = anim.rects[frameIndex];
+      ctx.drawImage(anim.image, r.x, r.y, r.w, r.h, dx, dy, dw, dh);
+    },
+  };
+}
+```
+
+`public/assets/spendable/spec/motion_spec_v4.json`, `rive_state_map.json`처럼 원래 Rive 상태 머신으로 설계했던 스펙 문서를 남겨두고, 실제 구현은 canvas 스프라이트 재생으로 갔다 — 프로토타입 단계에서 별도 애니메이션 런타임을 앱에 얹는 대신 필요한 만큼만 직접 구현한 것.
+
+### 5. 다가오는 돈 일정 — "근거 있는 일정만 보여준다"
+
+월급일·카드 결제일처럼 확정된 일정, 반복 패턴, 사용자가 직접 등록한 계획, 혜택 정보를 12개월 롤링 창 하나에 모았다. 여기서 지킨 원칙은 하나다 — **추측성 지출 예측은 넣지 않는다.** `MoneyScheduleEvent`의 `source` 필드가 `confirmed | recurring_pattern | user_plan | benefit` 중 하나로 항상 근거를 명시하게 강제한다.
+
+![다가오는 돈 일정 — 12개월 롤링 캘린더](/images/spendable/twelve-months.png)
+
+*그림 4: 확정 일정(월급 입금·카드 결제)과 혜택(포인트 소멸 예정)을 구분해서 보여준다.*
+
+### 6. 먼 미래의 나 — 인생 이벤트를 타임라인으로
+
+결혼·차량·주거 계획 설문 응답을 시간순 타임라인으로 재구성한다. 여기서 실제 데이터 모델링 문제 하나를 풀어야 했다 — **결혼 시점은 "몇 년도"가 아니라 "몇 살 때"로만 물어봤다.** 이 앱에는 생년월일 필드가 없어서 나이를 연도로 환산할 방법이 없다. 그래서 결혼 이벤트는 애초에 `sortYear`를 항상 `null`로 두고, "시기가 확정된 이벤트"와 "만 N세쯤으로만 아는 이벤트"를 타임라인/미정 목록으로 분리했다.
+
+```typescript
+// src/core/farFutureRoadmap.ts
+// 결혼: 현재 나이 데이터가 없어(이 앱엔 그런 필드가 없다) 연도를 절대 계산하지 않고
+// "만 N세쯤"으로만 표시한다. sortYear는 항상 null -> unscheduledEvents로 간다.
+function buildMarriageEvent(marriage) {
+  const timing = marriage.targetAge != null
+    ? { type: "age", label: `만 ${marriage.targetAge}세쯤`, sortYear: null }
+    : UNKNOWN_TIMING;
+  // ...
+}
+```
+
+없는 데이터를 억지로 추정해서 연도를 만들어내지 않고, 모델 단계에서부터 "모르는 건 모른다"로 분기한 게 이후 화면 버그를 줄였다.
+
+![먼 미래의 나 — 결혼·차량·주거 계획을 엮은 인생 타임라인](/images/spendable/far-future.png)
+
+*그림 5: 시기가 확정된 이벤트는 연도순 타임라인으로, "몇 살 때"로만 아는 이벤트는 별도 영역으로 분리했다.*
+
+![미래준비 홈 — 이번 달 여유자금과 AI 상담 진입점](/images/spendable/home.png)
+
+*그림 6: 홈 화면 하나에 이번 달 여유자금, AI 상담, 다가오는 일정, 이번 달 약속 메시지를 모았다.*
+
+---
+
+## 시행착오
+
+### Zustand persist의 얕은 병합이 저장된 화면을 깨뜨린 문제
+
+`localStorage`에 저장해두는 설문 답변(`answers`)에 나중에 필드(`lifePlan`, `userProfile` 등)를 추가했더니, 이전에 저장된 사용자 데이터를 불러올 때 화면이 죽는 문제가 발생했다. 원인은 zustand persist의 기본 `merge`가 최상위 키만 얕게 합친다는 점이었다 — `answers` 안의 `lifePlan` 객체 전체가 예전 localStorage 값으로 통째로 덮어써지면서, 새로 추가한 하위 필드가 `undefined`가 됐다.
+
+```typescript
+// src/state/surveyStore.ts
+// zustand의 기본 merge는 최상위 키만 얕게 합친다. answers 안에 이미 저장된 하위 객체(lifePlan 등)에
+// 새 필드를 추가하면, 예전 localStorage의 값이 통째로 덮어써서 새 필드가 undefined가 되어 화면이 죽는다.
+// (실제로 lifePlan에 이 문제가 있었다 — 같은 실수를 반복하지 않도록 한 단계 더 깊이 병합한다.)
+merge: (persistedState, currentState) => {
+  const persisted = persistedState as Partial<SurveyState> | undefined;
+  return {
+    ...currentState,
+    ...persisted,
+    answers: {
+      ...currentState.answers,
+      ...persisted?.answers,
+      lifePlan: {
+        ...currentState.answers.lifePlan,
+        ...persisted?.answers?.lifePlan,
+        marriage: { ...currentState.answers.lifePlan.marriage, ...persisted?.answers?.lifePlan?.marriage },
+        vehicle: { ...currentState.answers.lifePlan.vehicle, ...persisted?.answers?.lifePlan?.vehicle },
+        housing: { ...currentState.answers.lifePlan.housing, ...persisted?.answers?.lifePlan?.housing },
+      },
+      userProfile: { ...currentState.answers.userProfile, ...persisted?.answers?.userProfile },
+      savings: { ...currentState.answers.savings, ...persisted?.answers?.savings },
+      retirement: { ...currentState.answers.retirement, ...persisted?.answers?.retirement },
+    },
+  };
+},
+```
+
+설문처럼 중첩 구조가 계속 늘어나는 상태를 persist할 때는 얕은 병합을 기본값으로 믿으면 안 된다는 걸 실제로 화면이 죽고 나서 배웠다.
+
+### `/ask/result`는 아직 화면 흐름에 연결돼 있지 않다
+
+구매 판단 결과 화면(`/ask/result`) 자체는 계산 로직과 UI가 다 구현돼 있고 코드上으로는 정상 동작한다. 하지만 이 글을 쓰는 시점 기준으로 채팅(`/ask`)이나 홈 어디에서도 이 화면으로 연결하는 링크가 없다 — 계산 엔진과 화면은 먼저 만들고, 실제 진입 동선(예: 채팅에서 금액을 인식해서 판단 화면으로 넘기는 흐름)은 아직 설계 전이라는 뜻이다. 다음 단계에 명시해둔다.
+
+---
+
+## 결과
+
+- Vitest 유닛 테스트 13개가 `src/core`의 순수 함수(설문 점수화, 은퇴 프로젝션, 소비 판단, 12개월 일정, 인생 로드맵 등)를 커버 — 계산 로직 변경 시 회귀를 바로 잡아낸다
+- 6개 핵심 화면(설문 온보딩 → 홈 → 미래의 나 → AI 상담 → 12개월 일정 → 먼 미래의 나)이 더미 데이터 기준으로 끝까지 동작
+- 마이데이터·Gemini API로 교체할 지점을 어댑터 2개(`financeDataAdapter`, `mockChatAdapter`)로 명확히 분리해둠
+- `git log` 기준 4번의 커밋으로 기본 설문(Q1~Q5) → 마이데이터 동의·인생계획·AI 채팅 → 은퇴 프로젝션 엔진까지 단계적으로 확장
+
+---
+
+## 다음 단계
+
+- [ ] `/ask/result`를 실제 채팅 플로우에 연결 (금액·품목 인식 → 판단 화면 이동)
+- [ ] `mockChatAdapter` → Gemini API 실연동
+- [ ] `financeDataAdapter` → 실제 마이데이터 API 연동
+- [ ] 비상자금 확인 화면(`/emergency-fund`) 구현 — 현재는 "준비 중" 안내만 있는 상태
+- [ ] 부동산 자산에도 별도 상승률 적용 (현재는 현재가치를 그대로 이월)
+
+---
+
+_시리즈: [Spendable — KB AI 공모전](/series/spendable)_

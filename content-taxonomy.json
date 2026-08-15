@@ -1,6 +1,6 @@
 {
   "_comment": "블로그 콘텐츠 분류 체계 — 카테고리보다 시리즈 네비게이션을 우선",
-  "_updated": "2026-03-23",
+  "_updated": "2026-08-15",
 
   "series": [
     {
@@ -10,9 +10,7 @@
       "description": "Claude, Gemini 등 LLM 기반 멀티에이전트 시스템으로 콘텐츠를 자동 생성하는 프로젝트 시리즈",
       "color": "#6366f1",
       "posts": [
-        "landing-page-generator-overview",
-        "landing-page-generator-agents",
-        "ppt-team-agent-overview"
+        "landing-page-generator-overview"
       ]
     },
     {
@@ -22,19 +20,7 @@
       "description": "한국어 키워드 → 도우인 검색 → 영상 수집 → 편집 → 업로드 전 과정을 자동화하는 파이프라인",
       "color": "#f59e0b",
       "posts": [
-        "auto-rank-douyin-collection",
-        "auto-rank-playwright-bypass"
-      ]
-    },
-    {
-      "id": "remotion-video",
-      "name": "Remotion 영상 제작",
-      "slug": "remotion",
-      "description": "TypeScript 코드로 영상을 만드는 Remotion 프레임워크 활용기",
-      "color": "#10b981",
-      "posts": [
-        "remotion-intro-setup",
-        "inline-ai-video-production"
+        "auto-rank-douyin-collection"
       ]
     },
     {
@@ -44,41 +30,41 @@
       "description": "IoT 센서와 지도 기반 웹앱으로 빗물받이 현황을 실시간 모니터링하는 시스템",
       "color": "#3b82f6",
       "posts": [
-        "threebot-web-overview",
+        "stm32-firmware-architecture",
         "naver-map-troubleshooting",
-        "threebot-weight-sensor"
-      ]
-    },
-    {
-      "id": "wildfire-cctv",
-      "name": "산불 CCTV 협력 감지",
-      "slug": "wildfire-cctv",
-      "description": "여러 CCTV 스트림이 협력하여 연기/화재를 감지하고 발화 지점을 삼각측량하는 마이크로서비스 시스템",
-      "color": "#ef4444",
-      "posts": [
-        "wildfire-cctv-architecture",
-        "wildfire-cctv-microservices",
-        "wildfire-cctv-fusion-algorithm"
-      ]
-    },
-    {
-      "id": "dp-robot",
-      "name": "DProbot",
-      "slug": "dp-robot",
-      "description": "DProbot 서비스 랜딩페이지 구현",
-      "color": "#8b5cf6",
-      "posts": [
-        "dp-robot-landing-page"
+        "web-map-visualization",
+        "backend-postgresql-docker",
+        "geojson-rendering-architecture"
       ]
     },
     {
       "id": "ai-video",
       "name": "AI 영상 제작",
       "slug": "ai-video",
-      "description": "Kling AI, Veo3, 미드저니, Remotion 등 AI 도구를 활용한 영상 제작 프로젝트 모음",
+      "description": "Kling AI, Veo3, 미드저니 등 AI 영상 생성 도구를 활용한 영상 제작 프로젝트 모음",
       "color": "#ec4899",
       "posts": [
         "korean-road-56th-anniversary"
+      ]
+    },
+    {
+      "id": "interview-robot",
+      "name": "면접훈련 로봇",
+      "slug": "interview-robot",
+      "description": "InMoov 오픈소스 휴머노이드(i2Head)를 멀티모달 AI 면접관 인터페이스로 활용하는 프로젝트",
+      "color": "#14b8a6",
+      "posts": [
+        "inmoov-architecture-overview"
+      ]
+    },
+    {
+      "id": "spendable",
+      "name": "Spendable — KB AI 공모전",
+      "slug": "spendable",
+      "description": "KB국민은행 AI 공모전에 출품한 '미래준비' 탭 프로토타입. 설문 기반 재무 성향 분석부터 은퇴 자산 프로젝션, 구매 판단까지 구현한 Next.js 핀테크 앱",
+      "color": "#eab308",
+      "posts": [
+        "overview"
       ]
     }
   ],
@@ -118,10 +104,10 @@
 
   "tags": {
     "language": ["Python", "TypeScript", "JavaScript", "HTML", "Jupyter"],
-    "framework": ["Next.js", "React", "Remotion", "Playwright"],
+    "framework": ["Next.js", "React", "Playwright", "Zustand", "Vitest"],
     "infra": ["Docker", "Microservices", "GitHub Actions"],
     "ai": ["Claude API", "Gemini API", "LLM", "Multi-Agent", "Automation"],
-    "domain": ["IoT", "Maps", "Video", "PPT", "Landing Page", "CCTV", "Shorts"],
+    "domain": ["IoT", "Maps", "Video", "PPT", "Landing Page", "Shorts", "Fintech", "Robotics"],
     "tool": ["yt-dlp", "pptxgenjs", "Leaflet", "Naver Maps", "Recharts"]
   },
 
