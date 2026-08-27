@@ -6,6 +6,19 @@ Next.js(App Router) + MDX 기반으로, 코드 하이라이팅(Shiki)과 다크�
 - **Stack**: Next.js · TypeScript · MDX(`next-mdx-remote`, `gray-matter`) · Tailwind · Framer Motion · Three.js
 - **콘텐츠**: 시리즈/태그 기반으로 정리된 프로젝트 회고 포스트 (`content/posts/`)
 
+## 실제 구동 화면
+
+`npm run dev`로 직접 실행한 뒤 캡처한 실제 화면입니다.
+
+![홈](screenshots/01-home.png)
+*홈(`/`) — 자기소개와 시리즈 목록(AI 에이전트 자동화, 쇼츠 파이프라인, 쓰리봇, AI 영상 제작 등).*
+
+![시리즈 목록](screenshots/02-series.png)
+*시리즈 목록(`/series`) — 시리즈별 색상 태그, 편 수, 한 줄 설명.*
+
+![포스트 상세](screenshots/03-post-detail.png)
+*포스트 상세(`/posts/spendable/overview`) — frontmatter 기반 제목/요약/태그/읽기시간과 본문 콜아웃 렌더링.*
+
 ## 주요 기능
 
 - **시리즈 네비게이션**: 관련 프로젝트를 하나의 시리즈로 묶어 순서대로 탐색 (`/series/[seriesId]`)
